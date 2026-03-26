@@ -1,3 +1,6 @@
+/*************************/
+/* 本文件存放映射相关函数 */
+/*************************/
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
@@ -29,6 +32,9 @@ void __iomem *rx_len;
 void __iomem *rx_data_addr;
 void __iomem *ch_temp_addr;
 
+/*******************/
+/*    映射验证函数  */
+/*******************/
 bool driver_amp_resources_ready(void)
 {
     return tx_ip_addr && tx_node_id && tx_len && tx_data_addr &&
@@ -37,13 +43,18 @@ bool driver_amp_resources_ready(void)
            ctrl_reg && rx_ip_addr && rx_node_id && rx_len && rx_data_addr;
 }
 
+/*******************/
+/* 共享内存映射函数 */
+/*******************/
 int driver_amp_map_resources(void)
 {
+    /* 映射TX共享内存 */
     tx_ip_addr = ioremap_nocache(TX_NET_IP_ADDR, 4);
     tx_node_id = ioremap_nocache(TX_NET_NODE_ID, 4);
     tx_len = ioremap_nocache(TX_NET_IP_LEN, 4);
     tx_data_addr = ioremap_nocache(IP_TX_RAM_ADDR, MAX_PAYLOAD_SIZE);
 
+    /* 映射控制参数寄存器 */
     tx_test_freq = ioremap_nocache(TX_TEST_FREQ_ADDR, 4);
     tx_test_enable = ioremap_nocache(TX_TEST_ENABLE_ADDR, 4);
     tx_fixed_freq = ioremap_nocache(TX_FIXED_FREQ_ADDR, 4);
@@ -51,25 +62,36 @@ int driver_amp_map_resources(void)
     tx_loopback = ioremap_nocache(TX_LOOPBACK_ADDR, 4);
     tx_iq_swap = ioremap_nocache(TX_IQ_SWAP_ADDR, 4);
     tx_atten = ioremap_nocache(TX_ATTEN_ADDR, 4);
+    /* 映射控制寄存器 */
     ctrl_reg = ioremap_nocache(CTRL_REG_ADDR, 4);
 
+    /* 映射RX共享内存 */
     rx_ip_addr = ioremap_nocache(RX_NET_IP_ADDR, 4);
     rx_node_id = ioremap_nocache(RX_NET_NODE_ID, 4);
     rx_len = ioremap_nocache(RX_NET_IP_LEN, 4);
     rx_data_addr = ioremap_nocache(IP_RX_RAM_ADDR, MAX_PAYLOAD_SIZE);
+    /* 映射ADC监测数据地址 */
     ch_temp_addr = ioremap_nocache(CH_TEMP_ADDR, 4);
 
-    if (!driver_amp_resources_ready())
+    /* 检查映射是否成功 */
+    if (!driver_amp_resources_ready()){
+        //pr_err("Failed to ioremap shared memory\n");
         return -ENOMEM;
+    }
 
+    /* 初始化控制寄存器为0x00（两位都置0） */
     writeb(0x00, ctrl_reg);
     wmb();
 
+    /* 初始化RX等待队列（用户态read()阻塞等待CPU1->CPU0数据） */
     init_waitqueue_head(&rx_wq);
     atomic_set(&rx_pending, 0);
     return 0;
 }
 
+/*******************/
+/* 释放所有共享内存映射函数 */
+/*******************/
 void driver_amp_unmap_resources(void)
 {
     if (tx_ip_addr) iounmap(tx_ip_addr);

@@ -1,10 +1,17 @@
 # zhukong(new)
 
-这是一个 Zynq AMP 场景下的跨核通信项目，现已按驱动侧与用户态侧拆分为多文件结构，便于维护和局部修改。
+这是一个 Zynq AMP 场景下的跨核通信项目，现已按驱动侧与用户态侧拆分为目录结构，便于维护和局部修改。
 
 ## 项目结构
 
-### 驱动侧
+### 根目录
+
+- `AGENTS.md`：代理协作规则
+- `README.md`：项目说明
+- `amp_driver/`：驱动侧源码
+- `amp_user/`：用户态源码与构建文件
+
+### 驱动侧 `amp_driver/`
 
 - `driver_amp_main.c`：平台驱动入口、probe/remove、模块注册
 - `driver_amp_dev.c`：`/dev/amp_ipi` 读写接口
@@ -13,8 +20,9 @@
 - `driver_amp_proto.h`：驱动侧公共协议结构
 - `driver_amp_hw.h`：硬件地址、共享状态、跨文件声明
 
-### 用户态
+### 用户态 `amp_user/`
 
+- `Makefile`：用户态程序构建文件
 - `user_amp_main.c`：主程序入口与线程创建
 - `user_amp_tun.c`：TUN 设备创建与写包
 - `user_amp_gateway.c`：`eth1`/`rf0` 路由、proxy ARP、sysctl 配置
@@ -46,9 +54,12 @@
 
 ## 构建
 
-当前仓库提供用户态程序构建：
+当前仓库提供用户态程序构建，`Makefile` 位于 `amp_user/` 目录下。
+
+进入用户态目录后执行：
 
 ```bash
+cd amp_user
 make
 ```
 
