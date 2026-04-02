@@ -1,3 +1,6 @@
+/***********************/
+/*    主线程启动函数    */
+/***********************/
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>

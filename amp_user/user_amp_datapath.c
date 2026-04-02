@@ -1,3 +1,6 @@
+/**************************/
+/*    业务数据收发线程     */
+/**************************/
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -10,34 +13,36 @@
 
 #include "user_amp_runtime.h"
 
+/* 把一个文件描述符 fd 设置成非阻塞模式 */
 static int set_nonblock(int fd)
 {
-    int flags = fcntl(fd, F_GETFL, 0);
+    int flags = fcntl(fd, F_GETFL, 0);                  //打开文件标识符
     if (flags < 0)
         return -1;
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)	    //在原有标志上，额外打开 O_NONBLOCK 位设置为非阻塞
         return -1;
     return 0;
 }
 
+/* payload数据写入函数 */
 int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
 {
-    struct amp_net_msg msg;
+    struct amp_net_msg msg;         //创建发送结构体
     ssize_t w;
 
-    if (len > MAX_PAYLOAD_SIZE) {
+    if (len > MAX_PAYLOAD_SIZE) {   //判断传入长度不超过最大容纳值
         fprintf(stderr, "[ERROR] payload too large: %zu > %d\n", len, MAX_PAYLOAD_SIZE);
         return -1;
     }
 
-    memset(&msg, 0, sizeof(msg));
+    memset(&msg, 0, sizeof(msg));   //初始化msg结构体
     msg.data_type = 0;
-    msg.ip = dst_ip;
+    msg.ip = dst_ip;                //目的IP为传入的IP地址
     msg.node_id = 255;
-    msg.len = (uint32_t)len;
-    memcpy(msg.data, payload, len);
+    msg.len = (uint32_t)len;        //写入长度为传入的长度
+    memcpy(msg.data, payload, len); //payload全部放入传输数据data中
 
-    w = write(amp_fd, &msg, offsetof(struct amp_net_msg, data) + msg.len);
+    w = write(amp_fd, &msg, offsetof(struct amp_net_msg, data) + msg.len);  //将整个msg结构体写入，长度为msg.data的偏移量加上data的长度
     if (w < 0) {
         perror("write(amp)");
         return -1;
@@ -45,7 +50,9 @@ int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
     return 0;
 }
 
-static int is_icmp_ping_fastpath(const uint8_t *pkt, size_t len)
+
+/* 判断传入数据是否为ping包 */
+static int is_or_ping(const uint8_t *pkt, size_t len)
 {
     const struct iphdr *ip;
     size_t ihl;
@@ -68,6 +75,7 @@ static int is_icmp_ping_fastpath(const uint8_t *pkt, size_t len)
     return ic->type == ICMP_ECHO || ic->type == ICMP_ECHOREPLY;
 }
 
+/* 线程1：从TUN读取需要“跨射频”的IP包，写入驱动（-> CPU1 -> 对端） */
 void *tun_to_amp_thread(void *arg)
 {
     uint8_t buf[MAX_PAYLOAD_SIZE];
@@ -127,7 +135,7 @@ void *tun_to_amp_thread(void *arg)
             dst_ip = ip->daddr;
 
 #if AMP_ICMP_FASTPATH
-            is_ping = is_icmp_ping_fastpath(buf, pkt_len);
+            is_ping = is_or_ping(buf, pkt_len);
 #else
             is_ping = 0;
 #endif
@@ -183,6 +191,7 @@ out:
     return NULL;
 }
 
+/* 线程2：从驱动read()取出对端发来的IP包，写回TUN，让内核继续路由到eth1发给本地PC */
 void *amp_to_tun_thread(void *arg)
 {
     struct amp_net_msg msg;
