@@ -13,25 +13,25 @@
 
 ### 驱动侧 `amp_driver/`
 
-- `driver_amp_main.c`：平台驱动入口、probe/remove、模块注册
-- `driver_amp_dev.c`：`/dev/amp_ipi` 读写接口
-- `driver_amp_txrx.c`：业务数据/控制数据发送处理、RX 中断处理、IP 与节点映射
-- `driver_amp_hw.c`：共享内存和寄存器映射、资源初始化与释放
-- `driver_amp_proto.h`：驱动侧公共协议结构
-- `driver_amp_hw.h`：硬件地址、共享状态、跨文件声明
+- `driver_main.c`：平台驱动入口、probe/remove、模块注册
+- `driver_dev.c`：`/dev/amp_ipi` 读写接口
+- `driver_txrx.c`：业务数据/控制数据发送处理、RX 中断处理、IP 与节点映射
+- `driver_map.c`：共享内存和寄存器映射、资源初始化与释放
+- `driver_struct.h`：驱动侧公共协议结构
+- `driver_hardware.h`：硬件地址、共享状态、跨文件声明
 
 ### 用户态 `amp_user/`
 
 - `Makefile`：用户态程序构建文件
-- `user_amp_main.c`：主程序入口与线程创建
-- `user_amp_tun.c`：TUN 设备创建与写包
-- `user_amp_gateway.c`：`eth1`/`rf0` 路由、proxy ARP、sysctl 配置
-- `user_amp_batch.c`：小包聚合与批帧刷出
-- `user_amp_datapath.c`：业务数据收发线程
-- `user_amp_control.c`：控制 UDP 抓取与控制帧发送
-- `user_amp_proto.h`：用户态公共协议结构与批帧定义
-- `user_amp_config.h`：用户态配置宏
-- `user_amp_runtime.h`：跨文件运行时状态与函数声明
+- `user_main.c`：主程序入口与线程创建
+- `user_tun.c`：TUN 设备创建与写包
+- `user_gateway.c`：`eth1`/`rf0` 路由、proxy ARP、sysctl 配置
+- `user_batch.c`：小包聚合与批帧刷出
+- `user_datapath.c`：业务数据收发线程
+- `user_control.c`：控制 UDP 抓取与控制帧发送
+- `user_struct.h`：用户态公共协议结构与批帧定义
+- `user_config.h`：用户态配置宏
+- `user_declaration.h`：跨文件运行时状态与函数声明
 
 ## 功能概览
 

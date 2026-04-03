@@ -1,5 +1,5 @@
 /*****************************/
-/* 本文件存放控制数据流帧结构体 */
+/*   本文件存放数据流帧结构体  */
 /*****************************/
 #ifndef USER_AMP_PROTO_H
 #define USER_AMP_PROTO_H
@@ -9,7 +9,7 @@
 #include <string.h>
 #include <arpa/inet.h>
 
-#include "user_amp_config.h"
+#include "user_config.h"
 
 /* 与驱动一致（保持已有字段语义） */
 struct amp_net_msg {
@@ -23,18 +23,18 @@ struct amp_net_msg {
 /* 控制帧结构（保持原协议） */
 #pragma pack(push, 1)
 typedef struct {
-    uint16_t frame_header;
-    uint8_t  frame_type;
-    uint8_t  dst_addr;
-    uint32_t frame_seq;
-    uint32_t test_freq;
-    uint32_t test_enable;
-    uint32_t fixed_freq;
-    uint32_t net_test;
-    uint32_t loopback;
-    uint32_t iq_swap;
-    uint32_t attenuation;
-    uint16_t frame_tail;
+    uint16_t frame_header;  //帧头
+    uint8_t  frame_type;    //帧类型
+    uint8_t  dst_addr;      //目的地址
+    uint32_t frame_seq;     //帧序列号
+    uint32_t test_freq;     //测试信号频率
+    uint32_t test_enable;   //测试信号使能
+    uint32_t fixed_freq;    //定频频率
+    uint32_t net_test;      //组网数据发送测试
+    uint32_t loopback;      //数据自回环
+    uint32_t iq_swap;       //接收基带IQ对调
+    uint32_t attenuation;   //发射衰减系数
+    uint16_t frame_tail;    //帧尾
 } control_frame_t;
 #pragma pack(pop)
 

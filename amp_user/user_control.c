@@ -1,5 +1,5 @@
 /*************************************/
-/*     控制 UDP 抓取与控制帧发送      */
+/*       控制UDP数据抓取与发送        */
 /*************************************/
 #include <stdio.h>
 #include <string.h>
@@ -9,7 +9,7 @@
 #include <netinet/ip.h>
 #include <netinet/udp.h>
 
-#include "user_amp_runtime.h"
+#include "user_declaration.h"
 
 /*控制数据发送函数*/
 static int process_control_frame(uint8_t *udp_payload, int payload_len)

@@ -6,11 +6,10 @@
 #include <fcntl.h>
 #include <pthread.h>
 
-#include "user_amp_runtime.h"
+#include "user_declaration.h"
 
 int amp_fd = -1;
 int tun_fd = -1;
-uint32_t remote_pc_addr = 0;
 
 int main(void)
 {

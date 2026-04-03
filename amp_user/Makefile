@@ -3,12 +3,10 @@ CC = arm-linux-gnueabihf-gcc
 TARGET = user_amp
 
 SRCS = \
-	user_amp_main.c \
-	user_amp_tun.c \
-	user_amp_gateway.c \
-	user_amp_batch.c \
-	user_amp_datapath.c \
-	user_amp_control.c
+	user_main.c \
+	user_gateway.c \
+	user_datapath.c \
+	user_control.c
 
 OBJS = $(SRCS:.c=.o)
 

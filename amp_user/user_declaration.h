@@ -4,15 +4,15 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#include "user_amp_proto.h"
+#include "user_struct.h"
 
 extern int amp_fd;
 extern int tun_fd;
-extern uint32_t remote_pc_addr;
 
 int tun_alloc(const char *devname);
 int tun_write_packet(int fd, const uint8_t *pkt, size_t len);
 void setup_gateway_rules(void);
+int is_peer_pc_addr(uint32_t ip_be);
 
 void batch_reset(batch_state_t *b);
 int batch_append(batch_state_t *b, const uint8_t *pkt, size_t pkt_len, uint32_t dst_ip);

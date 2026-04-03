@@ -4,10 +4,9 @@ CROSS_COMPILE = /home/fmsh/FMQL-Linux-SDK-Prj-20230801_1113/gcc-linaro-7.3.1-201
 obj-m += driver_amp.o
 
 driver_amp-objs := \
-	driver_amp_main.o \
-	driver_amp_dev.o \
-	driver_amp_txrx.o \
-	driver_amp_hw.o
+	driver_main.o \
+	driver_txrx.o \
+	driver_map.o
 
 all:
 	make ARCH=arm CROSS_COMPILE=$(CROSS_COMPILE) -C $(KERNEL_SRC) M=$(CURDIR) modules

@@ -10,10 +10,10 @@
 #include <asm/barrier.h>
 #include <linux/fs.h>
 
-#include "driver_amp_hw.h"
+#include "driver_hardware.h"
 
 /************************
-*******IP节点映射表*******
+*******IP-节点对应表*******
 ************************/
 u32 ip_to_nodeid(__be32 ip_be)
 {
@@ -29,9 +29,9 @@ u32 ip_to_nodeid(__be32 ip_be)
     /* 广播：192.168.1.255 -> 255 */
     if (b0 == 192 && b1 == 168 && b2 == 1 && b3 == 255)
         return 255;
-    /* 单播：192.168.1.10 ~ 192.168.1.41 -> 0 ~ 31 */
-    if (b0 == 192 && b1 == 168 && b2 == 1 && b3 >= 10 && b3 <= 41)
-        return (u32)(b3 - 10);  // 对应 node_id <= 31
+    /* 单播：192.168.1.10 ~ 192.168.1.42 -> 0 ~ 33 */
+    if (b0 == 192 && b1 == 168 && b2 == 1 && b3 >= 10 && b3 <= 42)
+        return (u32)(b3 - 10);  // 对应 node_id <= 33
 
     return 0;
 }
@@ -39,7 +39,7 @@ u32 nodeid_to_ip(u32 node_id)
 {
     u8 ip[4] = {192, 168, 1, 0};
 
-    if (node_id <= 15) {
+    if (node_id <= 32) {
         ip[3] = 10 + node_id;
         return htonl(*(u32 *)ip);
     }
@@ -106,6 +106,7 @@ int process_control_data(struct amp_net_msg *msg)
     set_control_data_enable();
 
     /* 写入控制参数到对应寄存器（注意字节序转换） */
+    writel(be32_to_cpu(ctrl_frame->dst_addr), tx_node_id);          // 测试信号频率
     writel(be32_to_cpu(ctrl_frame->test_freq), tx_test_freq);       // 测试信号频率
     writel(be32_to_cpu(ctrl_frame->test_enable), tx_test_enable);   // 测试信号使能
     writel(be32_to_cpu(ctrl_frame->fixed_freq), tx_fixed_freq);     // 定频频率

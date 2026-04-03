@@ -1,5 +1,5 @@
 /*************************************/
-/*       本文件存放定义的不可变量      */
+/*          用户态配置宏定义         */
 /************************************/
 #ifndef USER_AMP_CONFIG_H
 #define USER_AMP_CONFIG_H
@@ -19,7 +19,7 @@
  * 调大：吞吐更好但交互/ ping RTT 更大；调小：时延更好但 SGI 次数更多。 */
 #define AMP_BATCH_TIMEOUT_MS 96
 
-/* ICMP/ping 快速通道开关 */
+/* ICMP/ping 快速通道开关（1为开启，0为关闭） */
 #define AMP_ICMP_FASTPATH 1
 
 /* rf0 MTU：为了允许 >640 的 IP 包“单包直发” */

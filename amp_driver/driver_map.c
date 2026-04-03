@@ -7,7 +7,7 @@
 #include <linux/wait.h>
 #include <linux/atomic.h>
 
-#include "driver_amp_hw.h"
+#include "driver_hardware.h"
 
 struct amp_net_msg rx_msg;
 size_t rx_msg_bytes;

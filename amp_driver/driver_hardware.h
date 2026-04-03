@@ -12,7 +12,7 @@
 #include <linux/atomic.h>
 #include <linux/io.h>
 
-#include "driver_amp_proto.h"
+#include "driver_struct.h"
 
 /* TX: 主控 -> 组网 (0x3800xxxx) */
 #define TX_BASE_ADDR        0x38000000              // TX基地址
@@ -41,7 +41,7 @@
 #define AMP_SGI_TX          15
 #define AMP_SGI_RX          14
 
-/* RX缓存：CPU1 -> CPU0 的数据先落在这里，用户态再read()取走 */
+/* RX缓存：CPU1(组网) -> CPU0(主控) 的数据先落在这里，用户态再read()取走 */
 extern struct amp_net_msg rx_msg;
 extern size_t rx_msg_bytes;
 extern atomic_t rx_pending;  // 防重入/丢包保护：1表示有包未读
