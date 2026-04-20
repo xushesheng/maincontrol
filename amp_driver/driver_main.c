@@ -6,11 +6,16 @@
 /************************************/
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/mutex.h>
 #include <linux/uaccess.h>
 #include <linux/irqchip/arm-gic.h>
 #include <asm/smp.h>
 
 #include "driver_hardware.h"
+
+/* 定义两个互斥锁（发送和接收） */
+static DEFINE_MUTEX(amp_tx_lock);
+static DEFINE_MUTEX(amp_read_lock);
 
 /****************/
 /* 用户态写入接口 */
@@ -42,23 +47,32 @@ ssize_t amp_write(struct file *file, const char __user *buf, size_t len, loff_t 
     if (!driver_amp_resources_ready() || !ctrl_reg)
         return -ENODEV;
 
+    /* mutex_lock_interruptible是 Linux 内核 互斥锁（mutex） API 中的一种加锁 */
+    if (mutex_lock_interruptible(&amp_tx_lock))
+        return -ERESTARTSYS;
+
     if (msg.data_type == 0) {
         ret = process_udp_data(&msg);
     } else if (msg.data_type == 1) {
         ret = process_control_data(&msg);
     } else {
-        return -EINVAL;
+        ret = -EINVAL;
+        goto out_unlock;
     }
 
     if (ret)
-        return ret;
+        goto out_unlock;
 
     pr_info("TX: ip=%pI4 len=%u ctrl=%u target=%u sgi=%u\n",
             &msg.ip, msg.len, readl(ctrl_reg), 1, AMP_SGI_TX);
 
     /* 触发中断通知CPU1 */
     gic_raise_softirq_fmsh(1, AMP_SGI_TX);
-    return offsetof(struct amp_net_msg, data) + msg.len;
+    ret = offsetof(struct amp_net_msg, data) + msg.len;
+
+out_unlock:     //解锁写入互斥锁
+    mutex_unlock(&amp_tx_lock);
+    return ret;
 }
 
 
@@ -68,24 +82,62 @@ ssize_t amp_write(struct file *file, const char __user *buf, size_t len, loff_t 
 ssize_t amp_read(struct file *file, char __user *buf, size_t len, loff_t *ppos)
 {
     ssize_t ret;
+    size_t msg_bytes;
+    unsigned int head;
+    unsigned long flags;
 
+    if (mutex_lock_interruptible(&amp_read_lock))       //给读取互斥锁上锁（可被信号量中断的）
+        return -ERESTARTSYS;
+
+retry_wait:
     /* 阻塞等待：直到有数据包到来 */
     if (!(file->f_flags & O_NONBLOCK)) {
-        ret = wait_event_interruptible(rx_wq, atomic_read(&rx_pending) != 0);
+        ret = wait_event_interruptible(rx_wq, atomic_read(&rx_ring_count) != 0);    //等待条件变为真，即环内待接收数量不为0
         if (ret)
-            return ret;
-    } else if (atomic_read(&rx_pending) == 0) {
-        return -EAGAIN;
+            goto out_unlock;
+    } else if (atomic_read(&rx_ring_count) == 0) {
+        ret = -EAGAIN;
+        goto out_unlock;
     }
 
-    if (len < rx_msg_bytes)
-        return -EINVAL;
+    spin_lock_irqsave(&rx_ring_lock, flags);
+    if (atomic_read(&rx_ring_count) == 0) {
+        spin_unlock_irqrestore(&rx_ring_lock, flags);
+        if (!(file->f_flags & O_NONBLOCK))
+            goto retry_wait;
+        ret = -EAGAIN;
+        goto out_unlock;
+    }
+    head = rx_ring_head;
+    msg_bytes = rx_ring[head].msg_bytes;
+    spin_unlock_irqrestore(&rx_ring_lock, flags);
 
-    if (copy_to_user(buf, &rx_msg, rx_msg_bytes))
-        return -EFAULT;
+    if (len < msg_bytes) {
+        ret = -EINVAL;
+        goto out_unlock;
+    }
 
-    atomic_set(&rx_pending, 0);
-    return rx_msg_bytes;
+    if (copy_to_user(buf, &rx_ring[head].msg, msg_bytes)) {
+        ret = -EFAULT;
+        goto out_unlock;
+    }
+
+    spin_lock_irqsave(&rx_ring_lock, flags);
+    if (atomic_read(&rx_ring_count) == 0 || rx_ring_head != head) {
+        spin_unlock_irqrestore(&rx_ring_lock, flags);
+        ret = -EIO;
+        goto out_unlock;
+    }
+    rx_ring_head = (rx_ring_head + 1U) % RX_RING_SIZE;
+    atomic_dec(&rx_ring_count);
+    atomic_inc(&rx_dequeued);
+    spin_unlock_irqrestore(&rx_ring_lock, flags);
+
+    ret = msg_bytes;
+
+out_unlock:
+    mutex_unlock(&amp_read_lock);
+    return ret;
 }
 
 /****************/

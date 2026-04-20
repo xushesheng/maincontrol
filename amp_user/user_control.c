@@ -15,8 +15,6 @@
 static int process_control_frame(uint8_t *udp_payload, int payload_len)
 {
     control_frame_t ctrl_frame;                             //创建一个数据帧ctrl_frame
-    struct amp_net_msg msg;                                 //创建一个网络数据发送帧msg
-    ssize_t w;
 
     if (payload_len != (int)sizeof(control_frame_t))        //传入数据长度不符合返回-1
         return -1;
@@ -27,17 +25,7 @@ static int process_control_frame(uint8_t *udp_payload, int payload_len)
     if (ntohs(ctrl_frame.frame_tail) != 0xE00E)
         return -1;
 
-    memset(&msg, 0, sizeof(msg));                           //初始化发送结构体msg
-    msg.data_type = 1;
-    msg.node_id = ctrl_frame.dst_addr;                      //目的IP赋为控制数据的目的IP
-    msg.ip = 0;
-    msg.len = sizeof(ctrl_frame);
-    memcpy(msg.data, &ctrl_frame, sizeof(ctrl_frame));      //将整个ctrl_frame放到msg.data里面发送
-
-    w = write(amp_fd, &msg, offsetof(struct amp_net_msg, data) + msg.len);  //把msg写入amp_fd文件描述符，长度为msg头部加上数据部分
-    if (w < 0)
-        perror("write(amp ctrl)");
-    return 0;
+    return amp_send_control_msg(&ctrl_frame);
 }
 
 /*pcap_dispatch的回调函数，发送截获的控制数据*/

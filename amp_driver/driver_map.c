@@ -6,12 +6,18 @@
 #include <linux/io.h>
 #include <linux/wait.h>
 #include <linux/atomic.h>
+#include <linux/string.h>
 
 #include "driver_hardware.h"
 
-struct amp_net_msg rx_msg;
-size_t rx_msg_bytes;
-atomic_t rx_pending = ATOMIC_INIT(0);
+struct amp_rx_slot rx_ring[RX_RING_SIZE];
+unsigned int rx_ring_head;
+unsigned int rx_ring_tail;
+atomic_t rx_ring_count = ATOMIC_INIT(0);
+spinlock_t rx_ring_lock;
+atomic_t rx_drop_full = ATOMIC_INIT(0);
+atomic_t rx_enqueued = ATOMIC_INIT(0);
+atomic_t rx_dequeued = ATOMIC_INIT(0);
 wait_queue_head_t rx_wq;
 
 void __iomem *tx_ip_addr;
@@ -85,7 +91,14 @@ int driver_amp_map_resources(void)
 
     /* 初始化RX等待队列（用户态read()阻塞等待CPU1->CPU0数据） */
     init_waitqueue_head(&rx_wq);
-    atomic_set(&rx_pending, 0);
+    spin_lock_init(&rx_ring_lock);
+    memset(rx_ring, 0, sizeof(rx_ring));
+    rx_ring_head = 0;
+    rx_ring_tail = 0;
+    atomic_set(&rx_ring_count, 0);
+    atomic_set(&rx_drop_full, 0);
+    atomic_set(&rx_enqueued, 0);
+    atomic_set(&rx_dequeued, 0);
     return 0;
 }
 

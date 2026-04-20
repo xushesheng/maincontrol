@@ -19,6 +19,13 @@
  * 调大：吞吐更好但交互/ ping RTT 更大；调小：时延更好但 SGI 次数更多。 */
 #define AMP_BATCH_TIMEOUT_MS 96
 
+/* 止血版：业务/控制统一串行下发到驱动，避免并发踩写 TX 单槽 */
+#define AMP_TX_QUEUE_DEPTH 64
+#define AMP_CTRL_QUEUE_DEPTH 16
+
+/* 每次写完 /dev/amp_ipi 后，留一个很小的保护间隔，降低 TX 单槽覆盖概率 */
+#define AMP_TX_GUARD_US 200
+
 /* ICMP/ping 快速通道开关（1为开启，0为关闭） */
 #define AMP_ICMP_FASTPATH 1
 

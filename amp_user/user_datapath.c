@@ -17,6 +17,13 @@
 
 #include "user_declaration.h"
 
+amp_tx_runtime_t amp_tx_runtime = {
+    .lock = PTHREAD_MUTEX_INITIALIZER,
+    .not_empty = PTHREAD_COND_INITIALIZER,
+    .data_not_full = PTHREAD_COND_INITIALIZER,
+    .ctrl_not_full = PTHREAD_COND_INITIALIZER,
+};
+
 /***********************/
 /*  TUN虚拟设备相关函数 */
 /***********************/
@@ -74,10 +81,140 @@ static int set_nonblock(int fd)
 }
 
 /* 调用驱动将payload写入AMP */
+static int amp_tx_enqueue_locked(amp_tx_slot_t *queue,
+                                 unsigned int depth,
+                                 unsigned int *tail,
+                                 unsigned int *count,
+                                 pthread_cond_t *not_full,
+                                 unsigned long *waits,
+                                 const char *queue_name,
+                                 const struct amp_net_msg *msg,
+                                 size_t msg_bytes)
+{
+    while (*count == depth) {
+        int rc;
+
+        (*waits)++;
+        if ((*waits % 64UL) == 1UL)
+            fprintf(stderr, "[WARN] %s queue full, waiting...\n", queue_name);
+
+        rc = pthread_cond_wait(not_full, &amp_tx_runtime.lock);
+        if (rc != 0)
+            return -1;
+    }
+
+    queue[*tail].msg = *msg;
+    queue[*tail].msg_bytes = msg_bytes;
+    *tail = (*tail + 1U) % depth;
+    (*count)++;
+    pthread_cond_signal(&amp_tx_runtime.not_empty);
+    return 0;
+}
+
+static int amp_tx_enqueue(int is_ctrl, const struct amp_net_msg *msg, size_t msg_bytes)
+{
+    int rc;
+
+    rc = pthread_mutex_lock(&amp_tx_runtime.lock);
+    if (rc != 0)
+        return -1;
+
+    if (is_ctrl) {
+        rc = amp_tx_enqueue_locked(amp_tx_runtime.ctrl_q,
+                                   AMP_CTRL_QUEUE_DEPTH,
+                                   &amp_tx_runtime.ctrl_tail,
+                                   &amp_tx_runtime.ctrl_count,
+                                   &amp_tx_runtime.ctrl_not_full,
+                                   &amp_tx_runtime.ctrl_waits,
+                                   "amp ctrl tx",
+                                   msg,
+                                   msg_bytes);
+    } else {
+        rc = amp_tx_enqueue_locked(amp_tx_runtime.data_q,
+                                   AMP_TX_QUEUE_DEPTH,
+                                   &amp_tx_runtime.data_tail,
+                                   &amp_tx_runtime.data_count,
+                                   &amp_tx_runtime.data_not_full,
+                                   &amp_tx_runtime.data_waits,
+                                   "amp data tx",
+                                   msg,
+                                   msg_bytes);
+    }
+
+    (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
+    return rc;
+}
+
+static int amp_write_msg_direct(const struct amp_net_msg *msg, size_t msg_bytes)
+{
+    while (1) {
+        ssize_t w = write(amp_fd, msg, msg_bytes);
+
+        if (w == (ssize_t)msg_bytes)
+            return 0;
+        if (w < 0 && errno == EINTR)
+            continue;
+        if (w < 0) {
+            amp_tx_runtime.tx_write_fail++;
+            perror("write(amp)");
+            return -1;
+        }
+
+        amp_tx_runtime.tx_short_write++;
+        fprintf(stderr, "[ERROR] short write(amp): %zd/%zu\n", w, msg_bytes);
+        return -1;
+    }
+}
+
+void *amp_tx_thread(void *arg)
+{
+    amp_tx_slot_t slot;
+
+    (void)arg;
+
+    while (1) {
+        int rc = pthread_mutex_lock(&amp_tx_runtime.lock);
+
+        if (rc != 0) {
+            fprintf(stderr, "[ERROR] pthread_mutex_lock(amp_tx_runtime) failed\n");
+            break;
+        }
+
+        while (amp_tx_runtime.ctrl_count == 0 && amp_tx_runtime.data_count == 0) {
+            rc = pthread_cond_wait(&amp_tx_runtime.not_empty, &amp_tx_runtime.lock);
+            if (rc != 0) {
+                (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
+                fprintf(stderr, "[ERROR] pthread_cond_wait(amp_tx_runtime) failed\n");
+                return NULL;
+            }
+        }
+
+        if (amp_tx_runtime.ctrl_count > 0) {
+            slot = amp_tx_runtime.ctrl_q[amp_tx_runtime.ctrl_head];
+            amp_tx_runtime.ctrl_head = (amp_tx_runtime.ctrl_head + 1U) % AMP_CTRL_QUEUE_DEPTH;
+            amp_tx_runtime.ctrl_count--;
+            pthread_cond_signal(&amp_tx_runtime.ctrl_not_full);
+        } else {
+            slot = amp_tx_runtime.data_q[amp_tx_runtime.data_head];
+            amp_tx_runtime.data_head = (amp_tx_runtime.data_head + 1U) % AMP_TX_QUEUE_DEPTH;
+            amp_tx_runtime.data_count--;
+            pthread_cond_signal(&amp_tx_runtime.data_not_full);
+        }
+
+        (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
+
+        (void)amp_write_msg_direct(&slot.msg, slot.msg_bytes);
+
+        if (AMP_TX_GUARD_US > 0)
+            usleep(AMP_TX_GUARD_US);
+    }
+
+    return NULL;
+}
+
 int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
 {
     struct amp_net_msg msg;         //创建发送结构体
-    ssize_t w;
 
     if (len > MAX_PAYLOAD_SIZE) {   //判断传入长度不超过最大容纳值
         fprintf(stderr, "[ERROR] payload too large: %zu > %d\n", len, MAX_PAYLOAD_SIZE);
@@ -91,9 +228,26 @@ int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
     msg.len = (uint32_t)len;
     memcpy(msg.data, payload, len);
 
-    w = write(amp_fd, &msg, offsetof(struct amp_net_msg, data) + msg.len);
-    if (w < 0) {
-        perror("write(amp)");
+    if (amp_tx_enqueue(0, &msg, offsetof(struct amp_net_msg, data) + msg.len) != 0) {
+        fprintf(stderr, "[ERROR] amp data enqueue failed\n");
+        return -1;
+    }
+    return 0;
+}
+
+int amp_send_control_msg(const control_frame_t *ctrl_frame)
+{
+    struct amp_net_msg msg;
+
+    memset(&msg, 0, sizeof(msg));
+    msg.data_type = 1;
+    msg.node_id = ctrl_frame->dst_addr;
+    msg.ip = 0;
+    msg.len = sizeof(*ctrl_frame);
+    memcpy(msg.data, ctrl_frame, sizeof(*ctrl_frame));
+
+    if (amp_tx_enqueue(1, &msg, offsetof(struct amp_net_msg, data) + msg.len) != 0) {
+        fprintf(stderr, "[ERROR] amp ctrl enqueue failed\n");
         return -1;
     }
     return 0;
@@ -150,6 +304,8 @@ int batch_append(batch_state_t *b, const uint8_t *pkt, size_t pkt_len, uint32_t 
  ********************/
 int amp_flush_batch_if_any(batch_state_t *b)
 {
+    int rc = 0;
+
     if (b->count == 0)
         return 0;
 
@@ -169,16 +325,16 @@ int amp_flush_batch_if_any(batch_state_t *b)
             return -1;
         }
 
-        (void)amp_send_msg(b->dst_ip, b->buf + off + 2, l); //跳过帧头和长度字节，直接把子包发出去
+        rc = amp_send_msg(b->dst_ip, b->buf + off + 2, l); //跳过帧头和长度字节，直接把子包发出去
         b->seq++;   //批次序号+1
         batch_reset(b);
-        return 0;
+        return rc;
     }
 
-    (void)amp_send_msg(b->dst_ip, b->buf, b->len);  //把头和所有子包（即整个buf部分）一起原样发出
+    rc = amp_send_msg(b->dst_ip, b->buf, b->len);  //把头和所有子包（即整个buf部分）一起原样发出
     b->seq++;
     batch_reset(b);
-    return 0;
+    return rc;
 }
 
 /* ping包判断函数  */
@@ -376,11 +532,13 @@ void *amp_to_tun_thread(void *arg)
                 off += 2;               //把读指针往后挪 2 个字节：跳过刚才读掉的长度字段，指向真正的包内容起始
                 if (off + zl > msg.len) //检查：缓冲区里剩下的字节是否足够放下一个完整子包
                     break;
-                (void)tun_write_packet(tun_fd, msg.data + off, zl); //写回TUN
+                if (tun_write_packet(tun_fd, msg.data + off, zl) != 0)
+                    perror("write(tun)");
                 off += zl;
             }
         } else {        //否则就是单包IP包，直接整个写回TUN
-            (void)tun_write_packet(tun_fd, msg.data, msg.len);
+            if (tun_write_packet(tun_fd, msg.data, msg.len) != 0)
+                perror("write(tun)");
         }
     }
 

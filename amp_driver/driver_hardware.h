@@ -11,6 +11,7 @@
 #include <linux/types.h>
 #include <linux/atomic.h>
 #include <linux/io.h>
+#include <linux/spinlock.h>
 
 #include "driver_struct.h"
 
@@ -41,10 +42,22 @@
 #define AMP_SGI_TX          15
 #define AMP_SGI_RX          14
 
-/* RX缓存：CPU1(组网) -> CPU0(主控) 的数据先落在这里，用户态再read()取走 */
-extern struct amp_net_msg rx_msg;
-extern size_t rx_msg_bytes;
-extern atomic_t rx_pending;  // 防重入/丢包保护：1表示有包未读
+#define RX_RING_SIZE        64
+
+/* RX缓存：CPU1(组网) -> CPU0(主控) 的数据先进入驱动侧环形队列，用户态再read()取走 */
+struct amp_rx_slot {
+    struct amp_net_msg msg;
+    size_t msg_bytes;
+};
+
+extern struct amp_rx_slot rx_ring[RX_RING_SIZE];        //建立一个amp_rx_slot类型的接收环
+extern unsigned int rx_ring_head;
+extern unsigned int rx_ring_tail;
+extern atomic_t rx_ring_count;      //定义原子级变量：接收环计数
+extern spinlock_t rx_ring_lock;     //定义不可抢占的自旋锁
+extern atomic_t rx_drop_full;
+extern atomic_t rx_enqueued;
+extern atomic_t rx_dequeued;
 extern wait_queue_head_t rx_wq;
 
 /* 共享内存虚拟地址映射 */

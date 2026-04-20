@@ -30,13 +30,6 @@
 #define SAVA_DATA_LENG        221                           //定义存储信息数据的最大长度字节数
 /*※※※※※※※※※※※※※※※※※※※结构体全局变量信息※※※※※※※※※※※※※※※※※※※※*/
 /*※※※※※※※※※※※※※※※※※※※主控-->web信息※※※※※※※※※※※※※※※※※※※※*/
-struct speechdata							                //定义网管和机箱管理收、发建链数据帧格式
-{
-	unsigned short frameHead;					            //帧头  ==0xF00F
-	unsigned char  frameCnt;				                //帧序列号  ==0x00
-	unsigned char  linkMark;					            //建链标识  ==0xaa
-	unsigned short frameEnd;					            //帧尾  ==0x0EE0
-} TxNetSpeechData,RxNetSpeechData;
 struct positiveAck              /*定义主控返回web网管肯定应答数据帧格式*/
 {
   unsigned short frameHead;                                 //帧头 ==0X0D00
@@ -44,9 +37,9 @@ struct positiveAck              /*定义主控返回web网管肯定应答数据�
   unsigned short GoalId;                                    //目的ID ==0C00
   unsigned short SourceID;                                  //源ID ==0B00
   unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==03
+  unsigned char frameType;                                  //帧类型 ==30
   unsigned char frameCnt;                                   //帧计数 ==00
-  unsigned char frameEnd;                                   //帧尾(即校验和) ==03
+  unsigned char frameEnd;                                   //帧尾(即校验和) ==30
 }positive_ack;
 struct negativeAck              /*定义主控返回web网管否定应答数据帧格式*/
 {
@@ -55,9 +48,9 @@ struct negativeAck              /*定义主控返回web网管否定应答数据�
   unsigned short GoalId;                                    //目的ID ==0C00
   unsigned short SourceID;                                  //源ID ==0B00
   unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==04
+  unsigned char frameType;                                  //帧类型 ==40
   unsigned char frameCnt;                                   //帧计数 ==00
-  unsigned char frameEnd;                                   //帧尾(即校验和) ==04
+  unsigned char frameEnd;                                   //帧尾(即校验和) ==40
 }negative_ack;
 struct backjobmodeQuery         /*定义主控返回web网管工作参数查询结果数据帧格式*/
 {
@@ -66,84 +59,129 @@ struct backjobmodeQuery         /*定义主控返回web网管工作参数查询�
   unsigned short GoalId;                                    //目的ID ==0C00
   unsigned short SourceID;                                  //源ID ==0B00
   unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==05
-  unsigned char frameCnt;                                   //帧计数 ==37
-  unsigned char TPDPoptioncode;                             //跳频定频操作码 ==C1
-  unsigned char TPDPdatecode;                               //跳频定频数据码
-  unsigned char ZWFSoptioncode;                             //组网方式操作码 ==C2
-  unsigned char ZWFSdatecode;                               //组网方式数据码
-  unsigned char QOSoptioncode;                              //QOS等级操作码  ==C3
-  unsigned char QOSdatecode;                                //QOS等级数据码
-  unsigned char TPMSoptioncode;                             //跳频模式操作码 ==C4
-  unsigned char TPMSdatecode;                               //跳频模式数据码
-  unsigned char TPSLoptioncode;                             //跳频速率操作码 ==C5
-  unsigned char TPSLdatecode;                               //跳频速率数据码 ==00
-  unsigned char TPPBoptioncode;                             //跳频频表操作码 ==C6
-  unsigned char TPPBdatecode;                               //跳频频表数据码 ==00
-  unsigned char TPXLoptoncode;                              //跳频序列操作码 ==C7
-  unsigned char TPXLdatecode;                               //跳频序列数据码 ==00
-  unsigned char TZDKoptioncode;                             //调制带宽操作码 ==C8
-  unsigned char TZDKdatecode;                               //调制带宽数据码 ==00
-  unsigned char GLSJoptioncode;                             //功率衰减操作码 ==C9
-  unsigned char GLSJdatecode;                               //功率衰减数据码
-  unsigned char JSTDZToptioncode;                           //接受通道状态操作码 ==CA
-  unsigned char JSTDZTdatecode;                             //接受通道状态数据码
-  unsigned char FSTDZToptioncode;                           //发射通道状态操作码 ==CB
-  unsigned char FSTDZTdatecode;                             //发射通道状态数据码
-  unsigned char TXLXoptioncode;                             //天线类型操作码 ==CC
-  unsigned char TXLXdatecode;                               //天线类型数据码
-  unsigned char PL1optioncode;                              //频率1000M和100MHz操作码 ==CD
-  unsigned char PL1datecode;                                //频率1000M和100MHz数据码
-  unsigned char PL2optioncode;                              //频率10M和1MHz操作码 ==CE
-  unsigned char PL2datecode;                                //频率10M和1MHz数据码
-  unsigned char PL3optioncode;                              //频率100K和10KHz操作码 ==CF
-  unsigned char PL3datecode;                                //频率100K和10KHz数据码
-  unsigned char PL4optioncode;                              //频率1K和100Hz操作码 ==D0
-  unsigned char PL4datecode;                                //频率1K和100Hz数据码
-  unsigned char PL5optioncode;                              //频率10和1Hz操作码 ==D1
-  unsigned char PL5datecode;                                //频率10和1Hz数据码
-  unsigned char IPB1optioncode;                             //IP地址B1操作码 ==D2
-  unsigned char IPB1datecode;                               //IP地址B1数据码
-  unsigned char IPB2optioncode;                             //IP地址B2操作码 ==D3
-  unsigned char IPB2datecode;                               //IP地址B2数据码
-  unsigned char IPB3optioncode;                             //IP地址B3操作码 ==D4
-  unsigned char IPB3datecode;                               //IP地址B3数据码
-  unsigned char IPB4optioncode;                             //IP地址B4操作码 ==D5
-  unsigned char IPB4datecode;                               //IP地址B4数据码
-  unsigned char IPYMB1optioncode;                           //IP地址掩码B1操作码 ==D6
-  unsigned char IPYMB1datecode;                             //IP地址掩码B1数据码
-  unsigned char IPYMB2optioncode;                           //IP地址掩码B2操作码 ==D7
-  unsigned char IPYMB2datecode;                             //IP地址掩码B2数据码
-  unsigned char IPYMB3optioncode;                           //IP地址掩码B3操作码 ==D8
-  unsigned char IPYMB3datecode;                             //IP地址掩码B3数据码
-  unsigned char IPYMB4optioncode;                           //IP地址掩码B4操作码 ==D9
-  unsigned char IPYMB4datecode;                             //IP地址掩码B4数据码
-  unsigned char WGDZB1optioncode;                           //网关地址B1操作码 ==DA
-  unsigned char WGDZB1datecode;                             //网关地址B1数据码
-  unsigned char WGDZB2optioncode;                           //网关地址B2操作码 ==DB
-  unsigned char WGDZB2datecode;                             //网关地址B2数据码
-  unsigned char WGDZB3optioncode;                           //网关地址B3操作码 ==DC
-  unsigned char WGDZB3datecode;                             //网关地址B3数据码
-  unsigned char WGDZB4optioncode;                           //网关地址B4操作码 ==DD
-  unsigned char WGDZB4datecode;                             //网关地址B4数据码
-  unsigned char TZFSoptioncode;                             //调制方式操作码 ==DE
-  unsigned char TZFSdatecode;                               //调制方式数据码
-  unsigned char XDBMotioncode;                              //信道编码操作码 ==DF
-  unsigned char XDBMdatecode;                               //信道编码数据码
+  unsigned char  frameType;                                 //帧类型 ==05
+  unsigned char  frameCnt;                                  //帧计数 ==37
+  unsigned char  SiteAttribute; 							//分为主从
+  unsigned char  NodeName;      							//节点名
+  unsigned char  NodeID;        							//节点ID
+  unsigned char  IPB1datecode;                              //IP地址B1数据码
+  unsigned char  IPB2datecode;                              //IP地址B2数据码
+  unsigned char  IPB3datecode;                              //IP地址B3数据码
+  unsigned char  IPB4datecode;                              //IP地址B4数据码
+  unsigned char  IPYMB1datecode;                            //IP地址掩码B1数据码
+  unsigned char  IPYMB2datecode;                            //IP地址掩码B2数据码
+  unsigned char  IPYMB3datecode;                            //IP地址掩码B3数据码
+  unsigned char  IPYMB4datecode;                            //IP地址掩码B4数据码
+  unsigned char  WGDZB1datecode;                            //网关地址B1数据码
+  unsigned char  WGDZB2datecode;                            //网关地址B2数据码
+  unsigned char  WGDZB3datecode;                            //网关地址B3数据码
+  unsigned char  WGDZB4datecode;                            //网关地址B4数据码
+  unsigned short HopRate;      								//跳频速率0-2000
+  unsigned char  SynSignal;     							//同步信号灯
+  unsigned char  LinkQuality;								//链路质量信号
+  unsigned char  FaultSignal;								//故障信号灯
+  unsigned char  Silent;									//当前设备静默辐射信号
+  unsigned char  AllSlient;									//全局静默辐射
+  unsigned char  ChannelInfo;   							//信道运行状态
+  unsigned short ChannelTemp;  								//16进制+BCD码（第一节子高位16进制表示正负，其余BCD码表示）
+  unsigned char  ChannelVolt;								//电压
+  unsigned char  ChannelElect;								//电流
+  unsigned char  RFInfo;        							//射频运行状态
+  unsigned short RFTemp;       								//16进制+BCD码（第一节子高位16进制表示正负，其余BCD码表示）
+  unsigned char  RFVolt;									//电压
+  unsigned char  RFElect;									//电流
+  unsigned char  BasedInfo;     							//基带运行状态
+  unsigned short BasedTemp;    								//16进制+BCD码（第一节子高位16进制表示正负，其余BCD码表示）
+  unsigned char  BasedVolt;									//
+  unsigned char  BasedElect;								//
+  unsigned char  Power1Info;    							//功放1运行状态
+  unsigned short Power1Temp;   								//16进制+BCD码（第一节子高位16进制表示正负，其余BCD码表示）
+  unsigned char  Power1Volt;								//
+  unsigned char  Power1Elect;								//
+  unsigned char  Power2Info;    							//功放2运行状态
+  unsigned short Power2Temp;   								//16进制+BCD码（第一节子高位16进制表示正负，其余BCD码表示）
+  unsigned char  Power2Volt;								//
+  unsigned char  Power2Elect;								//
+  unsigned char  BandwidthSet;								//带宽档位设置
+  unsigned char  PowerSet;									//功放档位设置
+  unsigned char  Encryption;								//加密方式
+  unsigned char  WorkMode;									//工作模式
+  unsigned int   FixedFrequency; 							//定频频率
+  unsigned int   AdaHopMinFre;   							//自适应跳频起始频率
+  unsigned int   AdaHopMaxFre;   							//自适应跳频结束频率
+  unsigned char  NotAdaHopFre;  							//非自适应跳频频表
+  unsigned char  ComNetName;    							//通信网络名称
+  unsigned int   MinFreThreshold;							//最小定频或自适应选频频率阈值
+  unsigned int   MaxFreThreshold;							//最大
+  unsigned char  Modulation;    							//调制方式
+  unsigned char  OnlineNodeSum; 							//在线节点数
+  unsigned char  ComDataSum;    							//通信数据总数
+  unsigned char  ComDataBER;    							//通信误码率
+  unsigned char  ComDataPLP;    							//通信丢包率
+  unsigned char  NodeConnect1;  							//节点连接情况(16进制)
+  unsigned char  NodeConnect2;
+  unsigned char  NodeConnect3;
+  unsigned char  NodeConnect4;
+  unsigned char  NodeConnect5;
+  unsigned char  NodeConnect6;
+  unsigned char  NodeConnect7;
+  unsigned char  NodeConnect8;
+  unsigned char  NodeConnect9;
+  unsigned char  NodeConnect10;
+  unsigned char  NodeConnect11;
+  unsigned char  NodeConnect12;
+  unsigned char  NodeConnect13;
+  unsigned char  NodeConnect14;
+  unsigned char  NodeConnect15;
+  unsigned char  NodeConnect16;
+  unsigned char  NodeConnect17;
+  unsigned char  NodeConnect18;
+  unsigned char  NodeConnect19;
+  unsigned char  NodeConnect20;
+  unsigned char  NodeConnect21;
+  unsigned char  NodeConnect22;
+  unsigned char  NodeConnect23;
+  unsigned char  NodeConnect24;
+  unsigned char  NodeConnect25;
+  unsigned char  NodeConnect26;
+  unsigned char  NodeConnect27;
+  unsigned char  NodeConnect28;
+  unsigned char  NodeConnect29;
+  unsigned char  NodeConnect30;
+  unsigned char  NodeConnect31;
+  unsigned char  NodeConnect32;
+  unsigned char  NodeConnect33;
+  unsigned char  NodeConnect34;
+  unsigned char  NodeConnect35;
+  unsigned char  NodeConnect36;
+  unsigned char  NodeConnect37;
+  unsigned char  NodeConnect38;
+  unsigned char  NodeConnect39;
+  unsigned char  NodeConnect40;
+  unsigned char  NodeConnect41;
+  unsigned char  NodeConnect42;
+  unsigned char  NodeConnect43;
+  unsigned char  NodeConnect44;
+  unsigned char  NodeConnect45;
+  unsigned char  NodeConnect46;
+  unsigned char  NodeConnect47;
+  unsigned char  NodeConnect48;
+  unsigned char  NodeConnect49;
+  unsigned char  NodeConnect50;
+  unsigned char  NodeConnect51;
+  unsigned char  NodeConnect52;
+  unsigned char  NodeConnect53;
+  unsigned char  NodeConnect54;
+  unsigned char  NodeConnect55;
+  unsigned char  NodeConnect56;
+  unsigned char  NodeConnect57;
+  unsigned char  NodeConnect58;
+  unsigned char  NodeConnect59;
+  unsigned char  NodeConnect60;
+  unsigned char  NodeConnect61;
+  unsigned char  NodeConnect62;
+  unsigned char  frameEnd;
 }back_jobmode_set;
-struct selftestReport           /*定义主控返回web网管自检查询数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0C00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0E     00001110
-  unsigned char frameCnt;                                   //帧计数 ==02     00000010
-  unsigned char selftestoptioncode;                         //自检操作码 ==e1 11100001
-  unsigned char selftestdatecode;                           //自检数据码 ==04
-  unsigned char frameEnd;                                   //帧尾(即校验和) ==E9
-}selftest_report;
 struct versionReport            /*定义主控返回web网管版本查询数据帧格式*/
 {
   unsigned short frameHead;                                 //帧头 ==0X1300
@@ -151,14 +189,13 @@ struct versionReport            /*定义主控返回web网管版本查询数据�
   unsigned short GoalId;                                    //目的ID ==0C00
   unsigned short SourceID;                                  //源ID ==0B00
   unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==10          00010000
-  unsigned char frameCnt;                                   //帧计数 ==06          00001111
-  unsigned char PLVoptioncode;                              //PL版本操作码 ==E1    11100001
-  unsigned char PLVdatecode;                                //PL版本数据码
-  unsigned char MACVoptioncode;                             //MAC版本操作码 ==E2   11100010
-  unsigned char MACVdatecode;                               //MAC版本数据码
-  unsigned char NETVoptioncode;                             //NET版本操作码 ==E3   11100011
-  unsigned char NETVdatecode;                               //NET版本数据码
+  unsigned char frameType;                                  //帧类型 ==10          00001010
+  unsigned char frameCnt;                                   //帧计数 ==05          00000101
+  unsigned char WEBVersion;                               //PL版本数据码
+  unsigned char MCVersion;                                //MAC版本数据码
+  unsigned char NETVersion;                               //NET版本数据码
+  unsigned char SPCLVersion;
+  unsigned char JDCLVersion;
   unsigned char frameEnd;                                   //帧尾(即校验和) ==FF  11111111
 }version_report;
 
@@ -166,196 +203,16 @@ struct versionReport            /*定义主控返回web网管版本查询数据�
 /*※※※※※※※※※※※※※※※※※※※web-->主控信息※※※※※※※※※※※※※※※※※※※※*/
 struct jobmodeQuery             /*定义接收web网管工作参数查询数据帧格式*/
 {
-  unsigned short frameHead;                                 //帧头 ==0X0F00
+  unsigned short frameHead;                                 //帧头 ==0X0D00
   unsigned short frameRetain;                               //帧保留 ==0000
   unsigned short GoalId;                                    //目的ID ==0B00
   unsigned short SourceID;                                  //源ID ==0C00
   unsigned short synchronizing;                             //同步序列 ==FFF5
   unsigned char frameType;                                  //帧类型 ==01
   unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char queryOptioncode;                            //查询请求操作码
-  unsigned char queryDatecode;                              //查询请求数据码
+  unsigned char querycode;                              	//查询请求数据码02
+  unsigned char frameEnd;                                   //帧尾(即校验和)
 }jobmode_query;
-struct jobmodeSet               /*定义接收web网管工作模式配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X1300
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==01
-  unsigned char frameCnt;                                   //帧计数 ==08
-  unsigned char TPDPoptioncode;                             //跳频定频操作码 ==C1
-  unsigned char TPDPdatecode;                               //跳频定频数据码
-  unsigned char ZWFSoptioncode;                             //组网方式操作码 ==C2
-  unsigned char ZWFSdatecode;                               //组网方式数据码
-  unsigned char QOSoptioncode;                              //QOS等级操作码 ==C3
-  unsigned char QOSdatecode;                                //QOS等级数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}jobmode_set;
-struct TPmodeSet                /*定义接收web网管跳频模式配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==05
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TPmodeoptioncode;                           //跳频模式操作码 ==C4
-  unsigned char TPmodedatecode;                             //跳频模式数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TPmode_set;
-struct DPmodeSet                /*定义接收web网管定频配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X1700
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==06
-  unsigned char frameCnt;                                   //帧计数 ==0A
-  unsigned char DPPL1optioncode;                            //频率1000M和100MHz操作码 ==CD
-  unsigned char DPPL1datecode;                              //频率1000M和100MHz数据码
-  unsigned char DPPL2optioncode;                            //频率10M和1MHz操作码 ==CE
-  unsigned char DPPL2datecode;                              //频率10M和1MHz数据码
-  unsigned char DPPL3optioncode;                            //频率100K和10KHz操作码 ==CF
-  unsigned char DPPL3datecode;                              //频率100K和10KHz数据码
-  unsigned char DPPL4optioncode;                            //频率1K和100Hz操作码 ==D0
-  unsigned char DPPL4datecode;                              //频率1K和100Hz数据码
-  unsigned char DPPL5optioncode;                            //频率10和1Hz操作码 ==D1
-  unsigned char DPPL5datecode;                              //频率10和1Hz数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}DPmode_set;
-struct TPCSSet                  /*定义接收web网管跳频参数预置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X1300
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==07
-  unsigned char frameCnt;                                   //帧计数 ==06
-  unsigned char TPSLoptioncode;                             //跳频速率操作码 ==C5
-  unsigned char TPSLdatecode;                               //跳频速率数据码
-  unsigned char TPPBoptioncode;                             //跳频频表操作码 ==C6
-  unsigned char TPPBdatecode;                               //跳频频表数据码
-  unsigned char TPXLoptioncode;                             //跳频序列操作码 ==C7
-  unsigned char TPXLdatecode;                               //跳频序列数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TPCS_set;
-struct TZDKSet                 /*定义接收web网管调制带宽配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==08
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TZKDoptioncode;                             //调制带宽操作码 ==C8
-  unsigned char TZKDdatecode;                               //调制带宽数据码 ==00
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TZDK_set;
-struct TZFSSet                 /*定义接收web网管调制方式配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==09
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TZFSoptioncode;                             //调制方式操作码 ==DE
-  unsigned char TZFSdatecode;                               //调制方式数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TZFS_set;
-struct XDBMSet                 /*定义接收web网管信道编码配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0A
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char XDBMoptioncode;                             //信道编码操作码 ==DF
-  unsigned char XDBMdatecode;                               //信道编码数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}XDBM_set;
-struct GLSJSet                 /*定义接收web网管信道功率衰减配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0B
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char GLSJoptioncode;                             //信道编码操作码 ==C9
-  unsigned char GLSJdatecode;                               //信道编码数据码 ==00
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}GLSJ_set;
-struct WLCSSet                 /*定义接收web网管网络参数配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X2500
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0C
-  unsigned char frameCnt;                                   //帧计数 ==18
-  unsigned char IPB1optioncode;                             //IP地址B1操作码 ==D2
-  unsigned char IPB1datecode;                               //IP地址B1数据码
-  unsigned char IPB2optioncode;                             //IP地址B2操作码 ==D3
-  unsigned char IPB2datecode;                               //IP地址B2数据码
-  unsigned char IPB3optioncode;                             //IP地址B3操作码 ==D4
-  unsigned char IPB3datecode;                               //IP地址B3数据码
-  unsigned char IPB4optioncode;                             //IP地址B4操作码 ==D5
-  unsigned char IPB4datecode;                               //IP地址B4数据码
-  unsigned char IPYMB1optioncode;                           //IP地址掩码B1操作码 ==D6
-  unsigned char IPYMB1datecode;                             //IP地址掩码B1数据码
-  unsigned char IPYMB2optioncode;                           //IP地址掩码B2操作码 ==D7
-  unsigned char IPYMB2datecode;                             //IP地址掩码B2数据码
-  unsigned char IPYMB3optioncode;                           //IP地址掩码B3操作码 ==D8
-  unsigned char IPYMB3datecode;                             //IP地址掩码B3数据码
-  unsigned char IPYMB4optioncode;                           //IP地址掩码B4操作码 ==D9
-  unsigned char IPYMB4datecode;                             //IP地址掩码B4数据码
-  unsigned char WGDZB1optioncode;                           //网关地址B1操作码 ==DA
-  unsigned char WGDZB1datecode;                             //网关地址B1数据码
-  unsigned char WGDZB2optioncode;                           //网关地址B2操作码 ==DB
-  unsigned char WGDZB2datecode;                             //网关地址B2数据码
-  unsigned char WGDZB3optioncode;                           //网关地址B3操作码 ==DC
-  unsigned char WGDZB3datecode;                             //网关地址B3数据码
-  unsigned char WGDZB4optioncode;                           //网关地址B4操作码 ==DD
-  unsigned char WGDZB4datecode;                             //网关地址B4数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}WLCS_set;
-struct TXLXSet                 /*定义接收web网管天线类型设置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==11
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TXLXoptioncode;                             //天线类型操作码 ==CC
-  unsigned char TXLXdatecode;                               //天线类型数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TXLX_set;
-struct selftestQuery           /*定义接收web网管自检查询数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0E00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0B00
-  unsigned short SourceID;                                  //源ID ==0C00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0D
-  unsigned char frameCnt;                                   //帧计数 ==01
-  unsigned char selftestqueryoptioncode;                    //自检查询操作码 ==e1
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}selftest_query;
 struct versionQuery            /*定义接收web网管版本查询数据帧格式*/
 {
   unsigned short frameHead;                                 //帧头 ==0X0E00
@@ -365,369 +222,34 @@ struct versionQuery            /*定义接收web网管版本查询数据帧格�
   unsigned short synchronizing;                             //同步序列 ==FFF5
   unsigned char frameType;                                  //帧类型 ==0F
   unsigned char frameCnt;                                   //帧计数 ==01
-  unsigned char versionqueryoptioncode;                     //版本查询操作码 ==e5
+  unsigned char querycode;                     				//版本查询数据码 ==01
   unsigned char frameEnd;                                   //帧尾(即校验和)
 }version_query;
-struct GZPBHFSet               /*定义接收web网管故障屏蔽与恢复设置指令数据帧格式*/
+struct WLCSSet                 /*定义接收web网管网络参数配置指令数据帧格式*/
 {
-  unsigned short frameHead;                                 //帧头 ==0X0F00
+  unsigned short frameHead;                                 //帧头 ==0X1B00
   unsigned short frameRetain;                               //帧保留 ==0000
   unsigned short GoalId;                                    //目的ID ==0B00
   unsigned short SourceID;                                  //源ID ==0C00
   unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==12
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char GZoptioncode;                               //故障屏蔽与恢复操作码 ==E4
-  unsigned char GZdatecode;                                 //故障屏蔽与恢复数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}GZPBHF_set;
-
-
-/*※※※※※※※※※※※※※※※※※※※写入共享内存信息※※※※※※※※※※※※※※※※※※※※*/
-struct jobmodeQuery             /*定义主控转发接收自web的工作参数查询数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==01
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char queryOptioncode;                            //查询请求操作码
-  unsigned char queryDatecode;                              //查询请求数据码
-}jobmode_query;
-struct jobmodeSet              /*定义主控转发接收自web的工作模式配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X1300
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==01
-  unsigned char frameCnt;                                   //帧计数 ==08
-  unsigned char TPDPoptioncode;                             //跳频定频操作码 ==C1
-  unsigned char TPDPdatecode;                               //跳频定频数据码
-  unsigned char ZWFSoptioncode;                             //组网方式操作码 ==C2
-  unsigned char ZWFSdatecode;                               //组网方式数据码
-  unsigned char QOSoptioncode;                              //QOS等级操作码 ==C3
-  unsigned char QOSdatecode;                                //QOS等级数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}jobmode_set;
-struct TPmodeSet                /*定义主控转发接收自web的跳频模式配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==05
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TPmodeoptioncode;                           //跳频模式操作码 ==C4
-  unsigned char TPmodedatecode;                             //跳频模式数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TPmode_set;
-struct DPmodeSet                /*定义主控转发接收自web的定频配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X1700
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==06
-  unsigned char frameCnt;                                   //帧计数 ==0A
-  unsigned char DPPL1optioncode;                            //频率1000M和100MHz操作码 ==CD
-  unsigned char DPPL1datecode;                              //频率1000M和100MHz数据码
-  unsigned char DPPL2optioncode;                            //频率10M和1MHz操作码 ==CE
-  unsigned char DPPL2datecode;                              //频率10M和1MHz数据码
-  unsigned char DPPL3optioncode;                            //频率100K和10KHz操作码 ==CF
-  unsigned char DPPL3datecode;                              //频率100K和10KHz数据码
-  unsigned char DPPL4optioncode;                            //频率1K和100Hz操作码 ==D0
-  unsigned char DPPL4datecode;                              //频率1K和100Hz数据码
-  unsigned char DPPL5optioncode;                            //频率10和1Hz操作码 ==D1
-  unsigned char DPPL5datecode;                              //频率10和1Hz数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}DPmode_set;
-struct TPCSSet                  /*定义主控转发接收自web的跳频参数预置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X1300
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==07
-  unsigned char frameCnt;                                   //帧计数 ==06
-  unsigned char TPSLoptioncode;                             //跳频速率操作码 ==C5
-  unsigned char TPSLdatecode;                               //跳频速率数据码
-  unsigned char TPPBoptioncode;                             //跳频频表操作码 ==C6
-  unsigned char TPPBdatecode;                               //跳频频表数据码
-  unsigned char TPXLoptioncode;                             //跳频序列操作码 ==C7
-  unsigned char TPXLdatecode;                               //跳频序列数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TPCS_set;
-struct TZDKSet                 /*定义主控转发接收自web的调制带宽配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==08
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TZKDoptioncode;                             //调制带宽操作码 ==C8
-  unsigned char TZKDdatecode;                               //调制带宽数据码 ==00
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TZDK_set;
-struct TZFSSet                 /*定义主控转发接收自web的调制方式配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==09
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TZFSoptioncode;                             //调制方式操作码 ==DE
-  unsigned char TZFSdatecode;                               //调制方式数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TZFS_set;
-struct XDBMSet                 /*定义主控转发接收自web的信道编码配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0A
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char XDBMoptioncode;                             //信道编码操作码 ==DF
-  unsigned char XDBMdatecode;                               //信道编码数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}XDBM_set;
-struct GLSJSet                 /*定义主控转发接收自web的信道功率衰减配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0B
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char GLSJoptioncode;                             //信道编码操作码 ==C9
-  unsigned char GLSJdatecode;                               //信道编码数据码 ==00
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}GLSJ_set;
-struct WLCSSet                 /*定义主控转发接收自web的网络参数配置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X2500
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
   unsigned char frameType;                                  //帧类型 ==0C
-  unsigned char frameCnt;                                   //帧计数 ==18
-  unsigned char IPB1optioncode;                             //IP地址B1操作码 ==D2
+  unsigned char frameCnt;                                   //帧计数 ==0F
+  unsigned short NodeName;
+  unsigned char NodeID;
   unsigned char IPB1datecode;                               //IP地址B1数据码
-  unsigned char IPB2optioncode;                             //IP地址B2操作码 ==D3
   unsigned char IPB2datecode;                               //IP地址B2数据码
-  unsigned char IPB3optioncode;                             //IP地址B3操作码 ==D4
   unsigned char IPB3datecode;                               //IP地址B3数据码
-  unsigned char IPB4optioncode;                             //IP地址B4操作码 ==D5
   unsigned char IPB4datecode;                               //IP地址B4数据码
-  unsigned char IPYMB1optioncode;                           //IP地址掩码B1操作码 ==D6
   unsigned char IPYMB1datecode;                             //IP地址掩码B1数据码
-  unsigned char IPYMB2optioncode;                           //IP地址掩码B2操作码 ==D7
   unsigned char IPYMB2datecode;                             //IP地址掩码B2数据码
-  unsigned char IPYMB3optioncode;                           //IP地址掩码B3操作码 ==D8
   unsigned char IPYMB3datecode;                             //IP地址掩码B3数据码
-  unsigned char IPYMB4optioncode;                           //IP地址掩码B4操作码 ==D9
   unsigned char IPYMB4datecode;                             //IP地址掩码B4数据码
-  unsigned char WGDZB1optioncode;                           //网关地址B1操作码 ==DA
   unsigned char WGDZB1datecode;                             //网关地址B1数据码
-  unsigned char WGDZB2optioncode;                           //网关地址B2操作码 ==DB
   unsigned char WGDZB2datecode;                             //网关地址B2数据码
-  unsigned char WGDZB3optioncode;                           //网关地址B3操作码 ==DC
   unsigned char WGDZB3datecode;                             //网关地址B3数据码
-  unsigned char WGDZB4optioncode;                           //网关地址B4操作码 ==DD
   unsigned char WGDZB4datecode;                             //网关地址B4数据码
   unsigned char frameEnd;                                   //帧尾(即校验和)
 }WLCS_set;
-struct TXLXSet                 /*定义主控转发接收自web的天线类型设置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==11
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char TXLXoptioncode;                             //天线类型操作码 ==CC
-  unsigned char TXLXdatecode;                               //天线类型数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}TXLX_set;
-struct selftestQuery           /*定义主控转发接收自web的自检查询数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0E00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0D
-  unsigned char frameCnt;                                   //帧计数 ==01
-  unsigned char selftestqueryoptioncode;                    //自检查询操作码 ==e1
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}selftest_query;
-struct versionQuery           /*定义主控转发接收自web的版本查询数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0E00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==0F
-  unsigned char frameCnt;                                   //帧计数 ==01
-  unsigned char versionqueryoptioncode;                     //版本查询操作码 ==e5
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}version_query;
-struct GZPBHFSet              /*定义主控转发接收自web的故障屏蔽与恢复设置指令数据帧格式*/
-{
-  unsigned short frameHead;                                 //帧头 ==0X0F00
-  unsigned short frameRetain;                               //帧保留 ==0000
-  unsigned short GoalId;                                    //目的ID ==0D00
-  unsigned short SourceID;                                  //源ID ==0B00
-  unsigned short synchronizing;                             //同步序列 ==FFF5
-  unsigned char frameType;                                  //帧类型 ==12
-  unsigned char frameCnt;                                   //帧计数 ==02
-  unsigned char GZoptioncode;                               //故障屏蔽与恢复操作码 ==E4
-  unsigned char GZdatecode;                                 //故障屏蔽与恢复数据码
-  unsigned char frameEnd;                                   //帧尾(即校验和)
-}GZPBHF_set;
-
-
-/*※※※※※※※※※※※※※※※※※※※读取共享内存信息※※※※※※※※※※※※※※※※※※※※*/
-struct positiveAck              /*定义组网软件返回主控肯定应答数据帧格式*/
-{
-  unsigned short frameHead;                         //帧头 ==0X0D00
-  unsigned short frameRetain;                       //帧保留 ==0000
-  unsigned short GoalId;                            //目的ID ==0B00
-  unsigned short SourceID;                          //源ID ==0D00
-  unsigned short synchronizing;                     //同步序列 ==FFF5
-  unsigned char frameType;                          //帧类型 ==03
-  unsigned char frameCnt;                           //帧计数 ==00
-  unsigned char frameEnd;                           //帧尾(即校验和) ==03
-}positive_ack;
-struct negativeAck              /*定义组网软件返回主控否定应答数据帧格式*/
-{
-  unsigned short frameHead;                         //帧头 ==0X0D00
-  unsigned short frameRetain;                       //帧保留 ==0000
-  unsigned short GoalId;                            //目的ID ==0B00
-  unsigned short SourceID;                          //源ID ==0D00
-  unsigned short synchronizing;                     //同步序列 ==FFF5
-  unsigned char frameType;                          //帧类型 ==04
-  unsigned char frameCnt;                           //帧计数 ==00
-  unsigned char frameEnd;                           //帧尾(即校验和) ==04
-}negative_ack;
-struct backjobmodeQuery         /*定义组网软件返回主控工作参数查询结果数据帧格式*/
-{
-  unsigned short frameHead;                         //帧头 ==0X4A00  64+10
-  unsigned short frameRetain;                       //帧保留 ==0000
-  unsigned short GoalId;                            //目的ID ==0B00
-  unsigned short SourceID;                          //源ID ==0D00
-  unsigned short synchronizing;                     //同步序列 ==FFF5
-  unsigned char frameType;                          //帧类型 ==05
-  unsigned char frameCnt;                           //帧计数 ==37
-  unsigned char TPDPoptioncode;                     //跳频定频操作码 ==C1
-  unsigned char TPDPdatecode;                       //跳频定频数据码
-  unsigned char ZWFSoptioncode;                     //组网方式操作码 ==C2
-  unsigned char ZWFSdatecode;                       //组网方式数据码
-  unsigned char QOSoptioncode;                      //QOS等级操作码  ==C3
-  unsigned char QOSdatecode;                        //QOS等级数据码
-  unsigned char TPMSoptioncode;                     //跳频模式操作码 ==C4
-  unsigned char TPMSdatecode;                       //跳频模式数据码
-  unsigned char TPSLoptioncode;                     //跳频速率操作码 ==C5
-  unsigned char TPSLdatecode;                       //跳频速率数据码 ==00
-  unsigned char TPPBoptioncode;                     //跳频频表操作码 ==C6
-  unsigned char TPPBdatecode;                       //跳频频表数据码 ==00
-  unsigned char TPXLoptoncode;                      //跳频序列操作码 ==C7
-  unsigned char TPXLdatecode;                       //跳频序列数据码 ==00
-  unsigned char TZDKoptioncode;                     //调制带宽操作码 ==C8
-  unsigned char TZDKdatecode;                       //调制带宽数据码 ==00
-  unsigned char GLSJoptioncode;                     //功率衰减操作码 ==C9
-  unsigned char GLSJdatecode;                       //功率衰减数据码
-  unsigned char JSTDZToptioncode;                   //接受通道状态操作码 ==CA
-  unsigned char JSTDZTdatecode;                     //接受通道状态数据码
-  unsigned char FSTDZToptioncode;                   //发射通道状态操作码 ==CB
-  unsigned char FSTDZTdatecode;                     //发射通道状态数据码
-  unsigned char TXLXoptioncode;                     //天线类型操作码 ==CC
-  unsigned char TXLXdatecode;                       //天线类型数据码
-  unsigned char PL1optioncode;                      //频率1000M和100MHz操作码 ==CD
-  unsigned char PL1datecode;                        //频率1000M和100MHz数据码
-  unsigned char PL2optioncode;                      //频率10M和1MHz操作码 ==CE
-  unsigned char PL2datecode;                        //频率10M和1MHz数据码
-  unsigned char PL3optioncode;                      //频率100K和10KHz操作码 ==CF
-  unsigned char PL3datecode;                        //频率100K和10KHz数据码
-  unsigned char PL4optioncode;                      //频率1K和100Hz操作码 ==D0
-  unsigned char PL4datecode;                        //频率1K和100Hz数据码
-  unsigned char PL5optioncode;                      //频率10和1Hz操作码 ==D1
-  unsigned char PL5datecode;                        //频率10和1Hz数据码
-  unsigned char IPB1optioncode;                     //IP地址B1操作码 ==D2
-  unsigned char IPB1datecode;                       //IP地址B1数据码
-  unsigned char IPB2optioncode;                     //IP地址B2操作码 ==D3
-  unsigned char IPB2datecode;                       //IP地址B2数据码
-  unsigned char IPB3optioncode;                     //IP地址B3操作码 ==D4
-  unsigned char IPB3datecode;                       //IP地址B3数据码
-  unsigned char IPB4optioncode;                     //IP地址B4操作码 ==D5
-  unsigned char IPB4datecode;                       //IP地址B4数据码
-  unsigned char IPYMB1optioncode;                   //IP地址掩码B1操作码 ==D6
-  unsigned char IPYMB1datecode;                     //IP地址掩码B1数据码
-  unsigned char IPYMB2optioncode;                   //IP地址掩码B2操作码 ==D7
-  unsigned char IPYMB2datecode;                     //IP地址掩码B2数据码
-  unsigned char IPYMB3optioncode;                   //IP地址掩码B3操作码 ==D8
-  unsigned char IPYMB3datecode;                     //IP地址掩码B3数据码
-  unsigned char IPYMB4optioncode;                   //IP地址掩码B4操作码 ==D9
-  unsigned char IPYMB4datecode;                     //IP地址掩码B4数据码
-  unsigned char WGDZB1optioncode;                   //网关地址B1操作码 ==DA
-  unsigned char WGDZB1datecode;                     //网关地址B1数据码
-  unsigned char WGDZB2optioncode;                   //网关地址B2操作码 ==DB
-  unsigned char WGDZB2datecode;                     //网关地址B2数据码
-  unsigned char WGDZB3optioncode;                   //网关地址B3操作码 ==DC
-  unsigned char WGDZB3datecode;                     //网关地址B3数据码
-  unsigned char WGDZB4optioncode;                   //网关地址B4操作码 ==DD
-  unsigned char WGDZB4datecode;                     //网关地址B4数据码
-  unsigned char TZFSoptioncode;                     //调制方式操作码 ==DE
-  unsigned char TZFSdatecode;                       //调制方式数据码
-  unsigned char XDBMotioncode;                      //信道编码操作码 ==DF
-  unsigned char XDBMdatecode;                       //信道编码数据码
-}back_jobmode_set;
-struct selftestReport           /*定义组网软件返回主控自检查询数据帧格式*/
-{
-  unsigned short frameHead;                         //帧头 ==0X0F00
-  unsigned short frameRetain;                       //帧保留 ==0000
-  unsigned short GoalId;                            //目的ID ==0B00
-  unsigned short SourceID;                          //源ID ==0D00
-  unsigned short synchronizing;                     //同步序列 ==FFF5
-  unsigned char frameType;                          //帧类型 ==0E     00001110
-  unsigned char frameCnt;                           //帧计数 ==02     00000010
-  unsigned char selftestoptioncode;                 //自检操作码 ==e1 11100001
-  unsigned char selftestdatecode;                   //自检数据码 ==04
-  unsigned char frameEnd;                           //帧尾(即校验和) ==E9
-}selftest_report;
-struct versionReport           /*定义组网软件返回主控版本查询数据帧格式*/
-{
-  unsigned short frameHead;                         //帧头 ==0X1300
-  unsigned short frameRetain;                       //帧保留 ==0000
-  unsigned short GoalId;                            //目的ID ==0B00
-  unsigned short SourceID;                          //源ID ==0D00
-  unsigned short synchronizing;                     //同步序列 ==FFF5
-  unsigned char frameType;                          //帧类型 ==10          00010000
-  unsigned char frameCnt;                           //帧计数 ==06          00001111
-  unsigned char PLVoptioncode;                      //PL版本操作码 ==E1    11100001
-  unsigned char PLVdatecode;                        //PL版本数据码
-  unsigned char MACVoptioncode;                     //MAC版本操作码 ==E2   11100010
-  unsigned char MACVdatecode;                       //MAC版本数据码
-  unsigned char NETVoptioncode;                     //NET版本操作码 ==E3   11100011
-  unsigned char NETVdatecode;                       //NET版本数据码
-  unsigned char frameEnd;                           //帧尾(即校验和) ==FF  11111111
-}version_report;
 
 /*※※※※※※※※※※※※※※※※※※※※※全局变量声明※※※※※※※※※※※※※※※※※※※※※※*/
 unsigned int linkCnt = 0;                                   //定义建链标志
@@ -738,13 +260,31 @@ char BenDiIP[256];
 struct sockaddr_in server_addr, client_addr;                //定义服务器、客户端地址结构
 struct sockaddr_in dest_addr;
         ///UDP接收线程    UDP发送线程 RAM读取线程 RAM写入线程   网口接收线程  网口发送线程
-pthread_t receive_tid , send_tid , read_RAM , write_RAM , receive_wk , send_wk; //定义线程ID
+pthread_t receive_tid , send_tid ; //定义线程ID
 
 int AllFrameCnt = 0;                                        //定义接收到的数据总数
 int ErrorByte = 0;                                          //定义误码数量
 double BER = 0;                                             //定义误码率 
 int IP1,IP2,IP3,IP4;                                        //定义IP的四个部分
-/******************* 函数名称：转换输出二进制****************************
+
+/*********************************************************************
+* 函数名称：异或校验验证函数
+* 功能描述：计算接收数据的头区域数据域异或结果
+**********************************************************************/
+unsigned char xorChecksum(const void *pkt, size_t size) {
+    unsigned char checksum = 0;
+    const unsigned char *bytePtr = (const unsigned char*)pkt;
+    
+    // 注意：排除最后一个字节(frameEnd)不参与计算
+    // 因为frameEnd本身就是用来存放校验值的
+    for(size_t i = 10; i < size - 1; i++) {
+        checksum ^= bytePtr[i];
+    }
+    
+    return checksum;
+}
+/*********************************************************************
+* 函数名称：转换输出二进制
 * 功能描述：获取二进制
 **********************************************************************/
 void printBinary(unsigned int num) {
@@ -762,7 +302,8 @@ void printBinary(unsigned int num) {
     IP3 = IP[15] + IP[14]*2 + IP[13]*4 + IP[12]*8 + IP[11]*16 + IP[10]*32 + IP[9]*64 + IP[8]*128;
     IP4 = IP[7] + IP[6]*2 + IP[5]*4 + IP[4]*8 + IP[3]*16 + IP[2]*32 + IP[1]*64 + IP[0]*128;
 }
-/************************* 函数名称：GetIP******************************
+/*********************************************************************
+* 函数名称：GetIP
 * 功能描述：获取本地IP
 **********************************************************************/
 void GetIP(void)					
@@ -786,23 +327,13 @@ void GetIP(void)
 		}
 	}
 }
-/******************* 函数名称：variableInit****************************
-* 版本标识：v3.00
+/*********************************************************************
+* 函数名称：variableInit
 * 创建时间：2024年8月22日
 * 功能描述：默认初始化变量(初始化返回值防止错误数据)
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：
-* ...
-* 修改内容n：
-* 修改人n：
-* 修改时间n：
 **********************************************************************/
 void variableInit(void)					
 {
-    memset(&RxNetSpeechData,'\0',sizeof(struct speechdata));//清0缓存
 	memset(&jobmode_query,0,sizeof(struct jobmodeQuery));   //清0缓存
 	memset(&jobmode_set,0,sizeof(struct jobmodeSet));       //清0缓存
 	memset(&TPmode_set,0,sizeof(struct TPmodeSet));         //清0缓存
@@ -817,492 +348,245 @@ void variableInit(void)
 	memset(&selftest_query,0,sizeof(struct selftestQuery)); //清0缓存
 	memset(&version_query,0,sizeof(struct versionQuery));   //清0缓存
 	memset(&GZPBHF_set,0,sizeof(struct GZPBHFSet));         //清0缓存
+	memset(&back_jobmode_set,0,sizeof(struct backjobmodeQuery));
+	memste(&version_report,0,sizeof(struct versionReport));
 	
 	/*工作参数回执初始赋值*/
 	{
-	    back_jobmode_set.frameHead=0x4A00;		            //帧头 ==0X4A00  64+10
+	    back_jobmode_set.frameHead=0x9800;		            //帧头 ==0X49800  8C+12
 	    back_jobmode_set.frameRetain=0x0000;                //帧保留 ==0000
 	    back_jobmode_set.GoalId=0x0C00;                     //目的ID ==0C00
 	    back_jobmode_set.SourceID=0x0B00;                   //源ID ==0B00
 	    back_jobmode_set.synchronizing=0xFFF5;              //同步序列 ==FFF5
-	    back_jobmode_set.frameType=0x05;                    //帧类型 ==05
-	    back_jobmode_set.frameCnt=0x37;                     //帧计数 ==37
-	    back_jobmode_set.TPDPoptioncode=0xC1;               //跳频定频操作码 ==C1
-	    back_jobmode_set.TPDPdatecode=0x01;                 //跳频定频数据码
-	    back_jobmode_set.ZWFSoptioncode=0xC2;               //组网方式操作码 ==C2
-	    back_jobmode_set.ZWFSdatecode=0x02;                 //组网方式数据码
-	    back_jobmode_set.QOSoptioncode=0xC3;                //QOS等级操作码  ==C3
-	    back_jobmode_set.QOSdatecode=0x02;                  //QOS等级数据码
-	    back_jobmode_set.TPMSoptioncode=0xC4;               //跳频模式操作码 ==C4
-	    back_jobmode_set.TPMSdatecode=0x01;                 //跳频模式数据码
-	    back_jobmode_set.TPSLoptioncode=0xC5;               //跳频速率操作码 ==C5
-	    back_jobmode_set.TPSLdatecode=0x05;                 //跳频速率数据码 ==00
-	    back_jobmode_set.TPPBoptioncode=0xC6;               //跳频频表操作码 ==C6
-	    back_jobmode_set.TPPBdatecode=0x06;                 //跳频频表数据码 ==00
-	    back_jobmode_set.TPXLoptoncode=0xC7;                //跳频序列操作码 ==C7
-	    back_jobmode_set.TPXLdatecode=0x07;                 //跳频序列数据码 ==00
-	    back_jobmode_set.TZDKoptioncode=0xC8;               //调制带宽操作码 ==C8
-	    back_jobmode_set.TZDKdatecode=0x08;                 //调制带宽数据码 ==00
-	    back_jobmode_set.GLSJoptioncode=0xC9;               //功率衰减操作码 ==C9
-	    back_jobmode_set.GLSJdatecode=0x09;                 //功率衰减数据码
-	    back_jobmode_set.JSTDZToptioncode=0xCA;             //接受通道状态操作码 ==CA
-	    back_jobmode_set.JSTDZTdatecode=0x00;               //接受通道状态数据码
-	    back_jobmode_set.FSTDZToptioncode=0xCB;             //发射通道状态操作码 ==CB
-	    back_jobmode_set.FSTDZTdatecode=0x00;               //发射通道状态数据码
-	    back_jobmode_set.TXLXoptioncode=0xCC;               //天线类型操作码 ==CC
-	    back_jobmode_set.TXLXdatecode=0x01;                 //天线类型数据码
-	    back_jobmode_set.PL1optioncode=0xCD;                //频率1000M和100MHz操作码 ==CD
-	    back_jobmode_set.PL1datecode=0x0D;                  //频率1000M和100MHz数据码
-	    back_jobmode_set.PL2optioncode=0xCE;                //频率10M和1MHz操作码 ==CE
-	    back_jobmode_set.PL2datecode=0x0E;                  //频率10M和1MHz数据码
-	    back_jobmode_set.PL3optioncode=0xCF;                //频率100K和10KHz操作码 ==CF
-	    back_jobmode_set.PL3datecode=0x0F;                  //频率100K和10KHz数据码
-	    back_jobmode_set.PL4optioncode=0xD0;                //频率1K和100Hz操作码 ==D0
-	    back_jobmode_set.PL4datecode=0x00;                  //频率1K和100Hz数据码
-	    back_jobmode_set.PL5optioncode=0xD1;                //频率10和1Hz操作码 ==D1
-	    back_jobmode_set.PL5datecode=0x01;                  //频率10和1Hz数据码
-	    back_jobmode_set.IPB1optioncode=0xD2;               //IP地址B1操作码 ==D2
-	    back_jobmode_set.IPB1datecode=0x7F;                 //IP地址B1数据码
-	    back_jobmode_set.IPB2optioncode=0xD3;               //IP地址B2操作码 ==D3
-	    back_jobmode_set.IPB2datecode=0x00;                 //IP地址B2数据码
-	    back_jobmode_set.IPB3optioncode=0xD4;               //IP地址B3操作码 ==D4
-	    back_jobmode_set.IPB3datecode=0x00;                 //IP地址B3数据码
-	    back_jobmode_set.IPB4optioncode=0xD5;               //IP地址B4操作码 ==D5
-	    back_jobmode_set.IPB4datecode=0x01;                 //IP地址B4数据码
-	    back_jobmode_set.IPYMB1optioncode=0xD6;             //IP地址掩码B1操作码 ==D6
-	    back_jobmode_set.IPYMB1datecode=0xFF;               //IP地址掩码B1数据码
-	    back_jobmode_set.IPYMB2optioncode=0xD7;             //IP地址掩码B2操作码 ==D7
-	    back_jobmode_set.IPYMB2datecode=0xFF;               //IP地址掩码B2数据码
-	    back_jobmode_set.IPYMB3optioncode=0xD8;             //IP地址掩码B3操作码 ==D8
-	    back_jobmode_set.IPYMB3datecode=0xFF;               //IP地址掩码B3数据码
-	    back_jobmode_set.IPYMB4optioncode=0xD9;             //IP地址掩码B4操作码 ==D9
-	    back_jobmode_set.IPYMB4datecode=0x00;               //IP地址掩码B4数据码
-	    back_jobmode_set.WGDZB1optioncode=0xDA;             //网关地址B1操作码 ==DA
-	    back_jobmode_set.WGDZB1datecode=0x7F;               //网关地址B1数据码
-	    back_jobmode_set.WGDZB2optioncode=0xDB;             //网关地址B2操作码 ==DB
-	    back_jobmode_set.WGDZB2datecode=0x00;               //网关地址B2数据码
-	    back_jobmode_set.WGDZB3optioncode=0xDC;             //网关地址B3操作码 ==DC
-	    back_jobmode_set.WGDZB3datecode=0x00;               //网关地址B3数据码
-	    back_jobmode_set.WGDZB4optioncode=0xDD;             //网关地址B4操作码 ==DD
-	    back_jobmode_set.WGDZB4datecode=0x0A;               //网关地址B4数据码
-	    back_jobmode_set.TZFSoptioncode=0xDE;               //调制方式操作码 ==DE
-	    back_jobmode_set.TZFSdatecode=0x0E;                 //调制方式数据码
-	    back_jobmode_set.XDBMotioncode=0xDF;                //信道编码操作码 ==DF
-	    back_jobmode_set.XDBMdatecode=0x0F;                 //信道编码数据码
+	    back_jobmode_set.frameType=0x20;                    //帧类型 ==20
+	    back_jobmode_set.frameCnt=0x8C;                     //帧计数 ==8C
 	}                                                      
     
-	/*自检信息初始赋值*/      
-	{	
-	    selftest_report.frameHead = 0x0F00;                 //帧头 ==0X0F00      
-	    selftest_report.frameRetain = 0x0000;               //帧保留 ==0000      
-	    selftest_report.GoalId = 0x0C00;                    //目的ID ==0C00      
-	    selftest_report.SourceID = 0x0B00;                  //源ID ==0B00        
-        selftest_report.synchronizing = 0xFFF5;             //同步序列 ==FFF5    
-        selftest_report.frameType = 0x0E;                   //帧类型 ==0E
-        selftest_report.frameCnt = 0x02;                    //帧计数 ==02
-        selftest_report.selftestoptioncode = 0xE1;          //自检操作码 ==e1 
-        selftest_report.selftestdatecode = 0x04;            //自检数据码 ==04
-	}
 	
-	/*版本信息初始赋值*/ 
+	/*版本信息回执初始赋值*/ 
 	{
-		version_report.frameHead=0x1300;		            //帧头 ==0X1300 
+		version_report.frameHead=0x1100;		            //帧头 ==0X1100 
 		version_report.frameRetain=0x0000;                  //帧保留 ==0000 
 		version_report.GoalId=0x0C00;                       //目的ID ==0C00 
 		version_report.SourceID=0x0B00;                     //源ID ==0B00   
 		version_report.synchronizing=0xFFF5;                //同步序列 ==FFF5
 		version_report.frameType=0x10;                      //帧类型 ==0x10
-		version_report.frameCnt=0x0F;                       //帧计数 ==0x0F
-		version_report.PLVoptioncode=0xE1;                  //PL版本操作码 ==E1
-		version_report.PLVdatecode=0x01;                    //PL版本数据码 ==01
-		version_report.MACVoptioncode=0xE2;                 //MAC版本操作码 ==e2
-		version_report.MACVdatecode=0x01;                   //MAC版本数据码 ==01
-		version_report.NETVoptioncode=0xE3;                 //NET版本操作码 ==e3
-		version_report.NETVdatecode=0x01;                   //NET版本数据码 ==01
+		version_report.frameCnt=0x05;                       //帧计数 ==0x05
 	}
 }
 /******************** 函数名称：makeSendData*****************************
 * 版本标识：v3.00
 * 创建时间：2024年8月22日
-* 功能描述：完成对网络发送数据的帧构建
-* 函数输入：makeclasses（构建数据类别，1建链回执帧，2肯定应答回执，3否定应答回执，4工作参数查询回执，
-*                        5自检查询回执，6版本查询回执）
-* 修改内容1：
-* 修改人1：
-* 修改时间1：
-* ...
-* 修改内容n：
-* 修改人n：
-* 修改时间n：
+* 功能描述：完成对网络发送数据的帧构建(用从组网接收到的数据构建）
+* 函数输入：makeclasses（构建数据类别:1肯定应答回执，2否定应答回执，3工作参数查询回执，4版本查询回执）
 **********************************************************************/
 void makeSendData(unsigned char makeclasses)
 {
 	switch(makeclasses)
 	{
-	case 1:                                                 //构建建链回执帧
-	{
-		linkCnt++;                                          //建链计数
-		break;                                              //跳出循环
-	}
-	case 2:                                                 //构建肯定应答回执帧
-	{
-		positive_ack.frameHead=0x0D00;	                    //帧头
-		positive_ack.frameRetain=0x0000;                    //帧保留
-		positive_ack.GoalId=0x0B00;                         //目的ID
-		positive_ack.SourceID=0x0A00;                       //源ID
-		positive_ack.synchronizing=0xFFF5;                  //同步序列
-		positive_ack.frameType=0x03;                        //帧类型
-		positive_ack.frameCnt=0x00;		  	                //帧计数
-		positive_ack.frameEnd=0x03;                         //帧尾（校验和）
-		break;
-	}
-	case 3:                                                 //构建否定应答回执帧
-	{
-		negative_ack.frameHead=0x0D00;
-		negative_ack.frameRetain=0x0000;
-		negative_ack.GoalId=0x0B00;
-		negative_ack.SourceID=0x0A00;
-		negative_ack.synchronizing=0xFFF5;
-		negative_ack.frameType=0x04;
-		negative_ack.frameCnt=0x00;					
-		negative_ack.frameEnd=0x04;
-		break;
-	}
-	case 4:                                                 //构建工作参数查询回执帧
-	{
-		back_jobmode_set.TPDPdatecode=jobmode_set.TPDPdatecode;    //跳频定频数据码统一
-		back_jobmode_set.ZWFSdatecode=jobmode_set.ZWFSdatecode;    //组网方式数据码统一
-		back_jobmode_set.QOSdatecode=jobmode_set.QOSdatecode;      //QOS等级 数据码统一
-		back_jobmode_set.TPMSdatecode=TPmode_set.TPmodedatecode;   //跳频数据码修正
-		back_jobmode_set.PL1datecode=DPmode_set.DPPL1datecode;     //定频频率修正
-		back_jobmode_set.PL2datecode=DPmode_set.DPPL2datecode;
-		back_jobmode_set.PL3datecode=DPmode_set.DPPL3datecode;
-		back_jobmode_set.PL4datecode=DPmode_set.DPPL4datecode;
-		back_jobmode_set.PL5datecode=DPmode_set.DPPL5datecode;
-		back_jobmode_set.TPSLdatecode=TPCS_set.TPSLdatecode;       //跳频速率数据码统一
-		back_jobmode_set.TPPBdatecode=TPCS_set.TPPBdatecode;       //跳频频表数据码统一
-		back_jobmode_set.TPXLdatecode=TPCS_set.TPXLdatecode;       //跳频序列数据码统一
-		back_jobmode_set.TZDKdatecode=TZDK_set.TZKDdatecode;       //调制带宽数据码修正
-		back_jobmode_set.TZFSdatecode=TZFS_set.TZFSdatecode;       //调制方式数据码修正
-		back_jobmode_set.XDBMdatecode=XDBM_set.XDBMdatecode;       //信道编码数据码修正
-		back_jobmode_set.GLSJdatecode=GLSJ_set.GLSJdatecode;       //功率衰减数据码修正
-		back_jobmode_set.IPB1datecode=WLCS_set.IPB1datecode;       //网络IP数据码修正
-		back_jobmode_set.IPB2datecode=WLCS_set.IPB2datecode;
-		back_jobmode_set.IPB3datecode=WLCS_set.IPB3datecode;
-		back_jobmode_set.IPB4datecode=WLCS_set.IPB4datecode;
-		back_jobmode_set.IPYMB1datecode=WLCS_set.IPYMB1datecode;   //地址掩码数据码修正
-		back_jobmode_set.IPYMB2datecode=WLCS_set.IPYMB2datecode;
-		back_jobmode_set.IPYMB3datecode=WLCS_set.IPYMB3datecode;
-		back_jobmode_set.IPYMB4datecode=WLCS_set.IPYMB4datecode;
-		back_jobmode_set.WGDZB1datecode=WLCS_set.WGDZB1datecode;   //网关地址数据码修正
-		back_jobmode_set.WGDZB2datecode=WLCS_set.WGDZB2datecode;
-		back_jobmode_set.WGDZB3datecode=WLCS_set.WGDZB3datecode;
-		back_jobmode_set.WGDZB4datecode=WLCS_set.WGDZB4datecode;
-		back_jobmode_set.TXLXdatecode=TXLX_set.TXLXdatecode;       //天线类型数据码修正
-		break;
-	}
-	case 5:                                                 //构建自检查询回执帧
-	{
-        selftest_report.selftestdatecode = 0x04;            //自检数据码 ==04    
-        selftest_report.frameEnd = (selftest_report.frameType ^ selftest_report.frameCnt ^ selftest_report.selftestoptioncode ^ selftest_report.selftestdatecode);            //帧尾(即校验和)
-		break;
-	}
-	case 6:                                                 //构建版本查询回执帧
-	{
-		version_report.PLVdatecode=0x01;                    //PL版本数据码 ==01
-		version_report.MACVdatecode=0x01;                   //MAC版本数据码 ==01
-		version_report.NETVdatecode=0x01;                   //NET版本数据码 ==01
-		version_report.frameEnd = (version_report.frameType ^ version_report.frameCnt ^ version_report.PLVoptioncode ^ version_report.PLVdatecode ^
-		                           version_report.MACVoptioncode ^ version_report.MACVdatecode ^ version_report.NETVoptioncode ^ version_report.NETVdatecode);
-		break;
-	}
-	default : makeclasses = 0;                              //结束一轮while循环
+		case 1:                                                 //构建肯定应答回执帧
+		{
+			positive_ack.frameHead=0x0D00;	                    //帧头
+			positive_ack.frameRetain=0x0000;                    //帧保留
+			positive_ack.GoalId=0x0B00;                         //目的ID
+			positive_ack.SourceID=0x0A00;                       //源ID
+			positive_ack.synchronizing=0xFFF5;                  //同步序列
+			positive_ack.frameType=0x03;                        //帧类型
+			positive_ack.frameCnt=0x00;		  	                //帧计数
+			positive_ack.frameEnd=0x03;                         //帧尾（校验和）
+			break;
+		}
+		case 2:                                                 //构建否定应答回执帧
+		{
+			negative_ack.frameHead=0x0D00;
+			negative_ack.frameRetain=0x0000;
+			negative_ack.GoalId=0x0B00;
+			negative_ack.SourceID=0x0A00;
+			negative_ack.synchronizing=0xFFF5;
+			negative_ack.frameType=0x04;
+			negative_ack.frameCnt=0x00;					
+			negative_ack.frameEnd=0x04;
+			break;
+		}
+		case 3:                                                 //构建工作参数查询回执帧
+		{
+			back_jobmode_set.SiteAttribute=0;
+			back_jobmode_set.NodeName=0;
+			back_jobmode_set.NodeID;
+			back_jobmode_set.IPB1datecode=0x00;//实际上要用从共享内存读到的数据构建    //网络IP数据码修正
+			back_jobmode_set.IPB2datecode=0x00;
+			back_jobmode_set.IPB3datecode=0x00;
+			back_jobmode_set.IPB4datecode=0x00;
+			back_jobmode_set.IPYMB1datecode=0x00;  //地址掩码数据码修正
+			back_jobmode_set.IPYMB2datecode=0x00;
+			back_jobmode_set.IPYMB3datecode=0x00;
+			back_jobmode_set.IPYMB4datecode=0x00;
+			back_jobmode_set.WGDZB1datecode=0x00;  //网关地址数据码修正
+			back_jobmode_set.WGDZB2datecode=0x00;
+			back_jobmode_set.WGDZB3datecode=0x00;
+			back_jobmode_set.WGDZB4datecode=0x00;
+			back_jobmode_set.HopRate=0;      
+			back_jobmode_set.SynSignal=0;    
+			back_jobmode_set.LinkQuality=0;	
+			back_jobmode_set.FaultSignal=0;	
+			back_jobmode_set.Silent=0;		
+			back_jobmode_set.AllSlient=0;		
+			back_jobmode_set.ChannelInfo=0;  
+			back_jobmode_set.ChannelTemp=0;  
+			back_jobmode_set.ChannelVolt=0;	
+			back_jobmode_set.ChannelElect=0;
+			back_jobmode_set.RFInfo=0;       
+			back_jobmode_set.RFTemp=0;       
+			back_jobmode_set.RFVolt=0;		
+			back_jobmode_set.RFElect=0;		
+			back_jobmode_set.BasedInfo=0;    
+			back_jobmode_set.BasedTemp=0;    
+			back_jobmode_set.BasedVolt=0;		
+			back_jobmode_set.BasedElect=0;	
+			back_jobmode_set.Power1Info=0;   
+			back_jobmode_set.Power1Temp=0;   
+			back_jobmode_set.Power1Volt=0;	
+			back_jobmode_set.Power1Elect=0;	
+			back_jobmode_set.Power2Info=0;   
+			back_jobmode_set.Power2Temp=0;   
+			back_jobmode_set.Power2Volt=0;	
+			back_jobmode_set.Power2Elect=0;	
+			back_jobmode_set.BandwidthSet=0;
+			back_jobmode_set.PowerSet=0;		
+			back_jobmode_set.Encryption=0;	
+			back_jobmode_set.WorkMode=0;		
+			back_jobmode_set.FixedFrequency=0;
+			back_jobmode_set.AdaHopMinFre=0; 
+			back_jobmode_set.AdaHopMaxFre=0; 
+			back_jobmode_set.NotAdaHopFre=0; 
+			back_jobmode_set.ComNetName=0;   
+			back_jobmode_set.MinFreThreshold=0;
+			back_jobmode_set.MaxFreThreshold=0;
+			back_jobmode_set.Modulation=0;   
+			back_jobmode_set.OnlineNodeSum=0;
+			back_jobmode_set.ComDataSum=0;   
+			back_jobmode_set.ComDataBER=0;   
+			back_jobmode_set.ComDataPLP=0;   
+			back_jobmode_set.NodeConnect1=0; 
+			back_jobmode_set.NodeConnect2=0;
+			back_jobmode_set.NodeConnect3=0;
+			back_jobmode_set.NodeConnect4=0;
+			back_jobmode_set.NodeConnect5=0;
+			back_jobmode_set.NodeConnect6=0;
+			back_jobmode_set.NodeConnect7=0;
+			back_jobmode_set.NodeConnect8=0;
+			back_jobmode_set.NodeConnect9=0;
+			back_jobmode_set.NodeConnect10=0;
+			back_jobmode_set.NodeConnect11=0;
+			back_jobmode_set.NodeConnect12=0;
+			back_jobmode_set.NodeConnect13=0;
+			back_jobmode_set.NodeConnect14=0;
+			back_jobmode_set.NodeConnect15=0;
+			back_jobmode_set.NodeConnect16=0;
+			back_jobmode_set.NodeConnect17=0;
+			back_jobmode_set.NodeConnect18=0;
+			back_jobmode_set.NodeConnect19=0;
+			back_jobmode_set.NodeConnect20=0;
+			back_jobmode_set.NodeConnect21=0;
+			back_jobmode_set.NodeConnect22=0;
+			back_jobmode_set.NodeConnect23=0;
+			back_jobmode_set.NodeConnect24=0;
+			back_jobmode_set.NodeConnect25=0;
+			back_jobmode_set.NodeConnect26=0;
+			back_jobmode_set.NodeConnect27=0;
+			back_jobmode_set.NodeConnect28=0;
+			back_jobmode_set.NodeConnect29=0;
+			back_jobmode_set.NodeConnect30=0;
+			back_jobmode_set.NodeConnect31=0;
+			back_jobmode_set.NodeConnect32=0;
+			back_jobmode_set.NodeConnect33=0;
+			back_jobmode_set.NodeConnect34=0;
+			back_jobmode_set.NodeConnect35=0;
+			back_jobmode_set.NodeConnect36=0;
+			back_jobmode_set.NodeConnect37=0;
+			back_jobmode_set.NodeConnect38=0;
+			back_jobmode_set.NodeConnect39=0;
+			back_jobmode_set.NodeConnect40=0;
+			back_jobmode_set.NodeConnect41=0;
+			back_jobmode_set.NodeConnect42=0;
+			back_jobmode_set.NodeConnect43=0;
+			back_jobmode_set.NodeConnect44=0;
+			back_jobmode_set.NodeConnect45=0;
+			back_jobmode_set.NodeConnect46=0;
+			back_jobmode_set.NodeConnect47=0;
+			back_jobmode_set.NodeConnect48=0;
+			back_jobmode_set.NodeConnect49=0;
+			back_jobmode_set.NodeConnect50=0;
+			back_jobmode_set.NodeConnect51=0;
+			back_jobmode_set.NodeConnect52=0;
+			back_jobmode_set.NodeConnect53=0;
+			back_jobmode_set.NodeConnect54=0;
+			back_jobmode_set.NodeConnect55=0;
+			back_jobmode_set.NodeConnect56=0;
+			back_jobmode_set.NodeConnect57=0;
+			back_jobmode_set.NodeConnect58=0;
+			back_jobmode_set.NodeConnect59=0;
+			back_jobmode_set.NodeConnect60=0;
+			back_jobmode_set.NodeConnect61=0;
+			back_jobmode_set.NodeConnect62=0;
+			back_jobmode_set.frameEnd=xorChecksum(&back_jobmode_set,sizeof(struct backjobmodeQuery));
+			break;
+		}
+		case 4:                                                 //构建版本查询回执帧
+		{
+			version_report.WEBVersion=0x01;                    //WEB版本数据码 ==01
+			version_report.MCVersion=0x01;                    //MC版本数据码 ==01
+			version_report.NETVersion=0x01;                   //NET版本数据码 ==01
+			version_report.SPCLVersion=0x01;
+			version_report.JDCLVersion=0x01;
+			version_report.frameEnd=xorChecksum(&version_report,sizeof(struct versionReport));
+			break；
+		}
+		default : makeclasses = 0;    
 	}
 }
+
+
 /******** 函数名称：recJobmodeQuery（存在问题：工作模式指令尚未定义）********
 * 版本标识：v3.00
 * 创建时间：2024年8月23日
 * 功能描述：接收web工作参数查询udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
 **********************************************************************/
 void recJobmodeQuery(void)
 {                                                                  //判定是否为工作模式查询数据
-    if(jobmode_query.frameHead == 0x0E && jobmode_query.frameType == 0X01 && jobmode_query.queryOptioncode == 0xD0 )
+    if(jobmode_query.frameHead == 0x0D && jobmode_query.frameType == 0X01 && jobmode_query.querycode == 0x02 )
 	{
 		sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
 				
 	}
 }
-/**********************函数名称：recJobmodeSet**************************
-* 版本标识：v3.00
+/*********************************************************************
+* 函数名称：recVersionQuery
 * 创建时间：2024年8月23日
-* 功能描述：接收web工作模式配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
+* 功能描述：接收web版本查询udp指令处理
 **********************************************************************/
-void recJobmodeSet(void)
+void recVersionQuery(void)
 {
-	if(jobmode_set.frameHead == 0x13 && jobmode_set.frameType == 0X01 && jobmode_set.frameCnt == 0x08)
-	{                                                            
-		makeSendData(4);                                           //构建工作参数查询回执帧
-		sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		makeSendData(2);                                           //构建应答数据
-		sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
+    if(version_query.frameHead == 0x0D && version_query.frameType == 0X01 && version_query.querycode == 0x01)
+	{
+		    makeSendData(4);
+        printf("shu_ju_yi_gou_jian\n");
+			sendto(sockfd,&version_report,sizeof(struct versionReport),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
 		
-	}
-}
-/********************* 函数名称：recTPmodeSet**************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web跳频模式配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recTPmodeSet(void)
-{
-    if(TPmode_set.frameHead == 0x0F && TPmode_set.frameType == 0X05 
-	&& TPmode_set.frameCnt == 0x02 && TPmode_set.TPmodeoptioncode == 0xC4 )
-	{
-		makeSendData(4);
-		sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		makeSendData(2);   
-		sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-				
-	}
-}
-/**********************函数名称：recDPmodeSet***************************
-***************** 功能描述：接收web定频配置udp指令处理*********************
-**********************************************************************/
-void recDPmodeSet(void)
-{
-    if(DPmode_set.frameHead == 0x17 && DPmode_set.frameType == 0X06 && DPmode_set.frameCnt == 0x0A)
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/************************函数名称：recTPCSSet***************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web跳频参数预置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recTPCSSet(void)
-{
-    if(TPCS_set.frameHead == 0x13 && TPCS_set.frameType == 0X07 && TPCS_set.frameCnt == 0x06)
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/***********************函数名称：recTZDKSet***************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web调制带宽配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recTZDKSet(void)
-{
-    if(TZDK_set.frameHead == 0x0F && TZDK_set.frameType == 0X08 
-	&& TZDK_set.frameCnt == 0x02 && TZDK_set.TZKDoptioncode == 0xC8 )
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/**********************函数名称：recTZFSSet****************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web调制方式配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recTZFSSet(void)
-{
-    if(TZFS_set.frameHead == 0x0F && TZFS_set.frameType == 0X09 
-	&& TZFS_set.frameCnt == 0x02 && TZFS_set.TZFSoptioncode == 0xDE )
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/************************函数名称：recXDBMSet***************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web信道编码配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recXDBMSet(void)
-{
-    if(XDBM_set.frameHead == 0x0F && XDBM_set.frameType == 0X0A 
-	&& XDBM_set.frameCnt == 0x02 && XDBM_set.XDBMoptioncode == 0xDF )
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/*************************函数名称：recGLSJSet**************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web信道功率衰减配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recGLSJSet(void)
-{
-    if(GLSJ_set.frameHead == 0x0F && GLSJ_set.frameType == 0X0B 
-	&& GLSJ_set.frameCnt == 0x02 && GLSJ_set.GLSJoptioncode == 0xC9 )
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
 	}
 }
 /*************************函数名称：recWLCSSet*************************
 * 版本标识：v3.00
 * 创建时间：2024年8月23日
 * 功能描述：接收web网络参数配置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
 **********************************************************************/
 void recWLCSSet(void)
 {
     if(WLCS_set.frameHead == 0x25 && WLCS_set.frameType == 0X0C && WLCS_set.frameCnt == 0x18)
 	{
-		    makeSendData(4);
+		    makeSendData(3);
 			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/*************************函数名称：recTXLXSet*************************
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web天线类型设置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recTXLXSet(void)
-{
-    if(TXLX_set.frameHead == 0x0F && TXLX_set.frameType == 0X11 
-	&& TXLX_set.frameCnt == 0x02)
-	{
-		    makeSendData(4);
-			sendto(sockfd,&back_jobmode_set,sizeof(struct backjobmodeQuery),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		 	makeSendData(2);   
-			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-			
-	}
-}
-/******函数名称：recSelftestQuery（存在问题:返回web的自检数据码尚未定义）*****
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web自检查询udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recSelftestQuery(void)
-{
-    if(selftest_query.frameHead == 0x0E && selftest_query.frameType == 0x0D  && selftest_query.frameCnt == 0x01)
-	{
-        
-		    makeSendData(5);
-        printf("shu_ju_yi_gou_jian\n");
-			sendto(sockfd,&selftest_report,sizeof(struct selftestReport),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		
-	}
-}
-/****函数名称：recVersionQuery（存在问题:返回web的版本查询数据码尚未定义）****
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web版本查询udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recVersionQuery(void)
-{
-    if(version_query.frameHead == 0x0E && version_query.frameType == 0X0F && version_query.frameCnt == 0x01)
-	{
-		    makeSendData(6);
-        printf("shu_ju_yi_gou_jian\n");
-			sendto(sockfd,&version_report,sizeof(struct versionReport),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
-		
-	}
-}
-/*****函数名称：recGZPBHFSet（存在问题:接收web故障屏蔽与恢复设置后无返回数据）***
-* 版本标识：v3.00
-* 创建时间：2024年8月23日
-* 功能描述：接收web故障屏蔽与恢复设置udp指令处理
-* 函数输入：无
-* 函数输出：无
-* 修改内容1：
-* 修改人1：
-* 修改时间1：			
-**********************************************************************/
-void recGZPBHFSet(void)
-{
-    if(GZPBHF_set.frameHead == 0x0F && GZPBHF_set.frameType == 0X12 && GZPBHF_set.frameCnt == 0x02 && GZPBHF_set.GZoptioncode == 0xE4	)
-	{
-		    makeSendData(2);
-        printf("shu_ju_yi_gou_jian\n");
+		 	makeSendData(1);   
 			sendto(sockfd,&positive_ack,sizeof(struct positiveAck),0,(struct sockaddr *)&dest_addr,sizeof(dest_addr));
 			
 	}
@@ -1317,6 +601,7 @@ void recGZPBHFSet(void)
 static void *udp_receive_thread(void *arg) {   
     unsigned char buffer[BUF_SIZE];
     unsigned char rx_udp_type;
+	unsigned char rx_udp_qurey;
     unsigned int rx_udp_cnt = 0;
     unsigned char SourceID;
     unsigned char GoalId;
@@ -1349,8 +634,6 @@ static void *udp_receive_thread(void *arg) {
            ErrorByte++;		   //记录收到的错误帧数量
 		   continue;
         }
-	    //计算误码率
-	    BER = ErrorByte/AllFrameCnt;
 		
 	    //打印出收到的数据
 	    printf("Received data: ");
@@ -1368,106 +651,40 @@ static void *udp_receive_thread(void *arg) {
 	    //printf("rec type: 0x%02x\n", rx_udp_type);                  //打印看返回数据type的值
 		
 	    //判断接受的数据是否是来自网管且发往主控
-	    int m = 4;
-        GoalId = buffer[m];  //buffer[4]表示数据目的地址号，主控为b
-	    int s = 6;
-        SourceID = buffer[s];//buffer[6]表示数据来源地址号，web网管为c
-	    if(GoalId == 0x0b && SourceID == 0x0c )
-        {       
-            if(rx_udp_cnt == 14 &&  rx_udp_type == 0x01)
-	    	{
-                printf("recive jobmodeQuery \n");
-	    		memcpy(&jobmode_query,buffer,rx_udp_cnt);//缓存web工作参数查询数据
-	    		recJobmodeQuery();                       //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 19  &&  rx_udp_type == 0x01)
-	    	{
-                printf("recive jobmodeSet \n");
-	    		memcpy(&jobmode_set,buffer,rx_udp_cnt);  //缓存web工作模式配置指令数据
-	    		recJobmodeSet();                         //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x05)
-	    	{
-                printf("recive TPmodeSet \n");
-	    		memcpy(&TPmode_set,buffer,rx_udp_cnt);   //缓存web跳频模式配置指令数据
-	    		recTPmodeSet();                          //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 23  &&  rx_udp_type == 0x06)
-	    	{
-                printf("recive DPmodeSet \n");
-	    		memcpy(&DPmode_set,buffer,rx_udp_cnt);   //缓存web定频配置指令数据
-	    		recDPmodeSet();                          //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 19  &&  rx_udp_type == 0x07)
-	    	{
-                printf("recive TPCSSet \n");
-	    		memcpy(&TPCS_set,buffer,rx_udp_cnt);     //缓存web跳频参数预设指令数据
-	    		recTPCSSet();                            //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x08)
-	    	{
-                printf("recive TZDKSet \n");
-	    		memcpy(&TZDK_set,buffer,rx_udp_cnt);     //缓存web调制带宽配置指令数据
-	    		recTZDKSet();                            //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x09)
-	    	{
-                printf("recive TZFSSet \n");
-	    		memcpy(&TZFS_set,buffer,rx_udp_cnt);     //缓存web调制方式配置指令数据
-	    		recTZFSSet();                            //处理指令
-                rx_udp_type = 0;                         //重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x0A)
-	    	{
-                printf("recive XDBMSet \n");
-	    		memcpy(&XDBM_set,buffer,rx_udp_cnt);     //缓存web信道编码配置指令数据
-	    		recXDBMSet();                            //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x0B)
-	    	{
-                printf("recive GLSJSet \n");
-	    		memcpy(&GLSJ_set,buffer,rx_udp_cnt);     //缓存web信道功率衰减配置指令数据
-	    		recGLSJSet();                            //处理指令
-                rx_udp_type = 0;                         //重置rx_udp_type
-	    	}else if(rx_udp_cnt == 37  &&  rx_udp_type == 0x0C)
-	    	{
-                printf("recive WLCSSet \n");
-	    		memcpy(&WLCS_set,buffer,rx_udp_cnt);     //缓存web网络参数配置指令数据
-	    		recWLCSSet();                            //处理指令
-                rx_udp_type = 0;                         //重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x11)
-	    	{
-                printf("recive TXLXSet \n");
-	    		memcpy(&TXLX_set,buffer,rx_udp_cnt);     //缓存web天线类型设置指令数据
-	    		recTXLXSet();                            //处理指令
-                rx_udp_type = 0;                         //重置rx_udp_type
-	    	}else if(rx_udp_cnt == 14  &&  rx_udp_type == 0x0D)
-	    	{
-                printf("recive selftestQuery \n");
-	    		memcpy(&selftest_query,buffer,rx_udp_cnt);//缓存web自检查询指令数据
-	    		recSelftestQuery();                       //处理指令
-                rx_udp_type = 0;                          // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 14  &&  rx_udp_type == 0x0F)
-	    	{
-                printf("recive versionQuery \n");
-	    		memcpy(&version_query,buffer,rx_udp_cnt);//缓存web版本查询指令数据
-	    		recVersionQuery();                       //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}else if(rx_udp_cnt == 15  &&  rx_udp_type == 0x12)
-	    	{
-                printf("recive GZPBHFSet \n");           
-	    		memcpy(&GZPBHF_set,buffer,rx_udp_cnt);   //缓存web故障屏蔽与恢复设置指令数据
-	    		recGZPBHFSet();                          //处理指令
-                rx_udp_type = 0;                         // 重置rx_udp_type
-	    	}
-	    	else
-	    	{
-                printf("????date???? \n");
-	    		rx_udp_cnt = 0;
-	    		memset(&buffer,0, sizeof(buffer));
-	    	}
-        } else{
-            printf("Data not belong zhukong\n");
-            }
+	    //int m = 4;
+        //GoalId = buffer[m];  //buffer[4]表示数据目的地址号，主控为b
+	    //int s = 6;
+        //SourceID = buffer[s];//buffer[6]表示数据来源地址号，web网管为c
+		if(rx_udp_cnt == 14 &&  rx_udp_type == 0x01)
+		{
+			rx_udp_qurey = buffer[j+2];
+			if(rx_udp_qurey == 2)
+			{
+				printf("recive jobmodeQuery \n");
+				memcpy(&jobmode_query,buffer,rx_udp_cnt);//缓存web工作参数查询数据
+				recJobmodeQuery();                       //处理指令
+				rx_udp_type = 0;
+			}
+			else if(rx_udp_qurey == 1)
+			{
+				printf("recive versionQuery \n");
+				memcpy(&version_query,buffer,rx_udp_cnt);//缓存web版本查询指令数据
+				recVersionQuery();                       //处理指令
+				rx_udp_type = 0;                         // 重置rx_udp_type
+			}				// 重置rx_udp_type
+	    }else if(rx_udp_cnt == 37  &&  rx_udp_type == 0x0C)
+	    {
+            printf("recive WLCSSet \n");
+	    	memcpy(&WLCS_set,buffer,rx_udp_cnt);     //缓存web网络参数配置指令数据
+	    	recWLCSSet();                            //处理指令
+            rx_udp_type = 0;                         //重置rx_udp_type
+	    }
+	    else
+	    {
+            printf("????date???? \n");
+	    	rx_udp_cnt = 0;
+	    	memset(&buffer,0, sizeof(buffer));
+	    }
 		usleep(10*1000);
     }
     rx_udp_cnt = 0;

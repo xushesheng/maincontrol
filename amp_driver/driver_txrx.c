@@ -181,15 +181,13 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
     u32 len;
     u32 node_id;
     u32 ip;
+    unsigned long flags;
+    struct amp_rx_slot *slot;
 
-    /* 防重入保护 */
-    if (atomic_cmpxchg(&rx_pending, 0, 1) != 0) {
-        pr_warn("RX already pending, skipping\n");
-        return;
-    }
+    (void)ipinr;
+    (void)dev_id;
 
     if (!rx_len || !rx_node_id || !rx_ip_addr || !rx_data_addr) {
-        atomic_set(&rx_pending, 0);
         return;
     }
 
@@ -200,19 +198,32 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
     rmb();
 
     if (len > MAX_PAYLOAD_SIZE) {
-        atomic_set(&rx_pending, 0);
+        pr_warn_ratelimited("RX len too large, dropping: %u\n", len);
         return;
     }
 
-    /* 组装一条发给用户态的消息（read()取走后再清 pending） */
-    memset(&rx_msg, 0, sizeof(rx_msg));
-    rx_msg.data_type = 0; /* 目前RX侧只回传数据类（业务/隧道IP包） */
-    rx_msg.ip = ip;
-    rx_msg.node_id = node_id;
-    rx_msg.len = len;
-    if (len > 0)
-        memcpy_fromio(rx_msg.data, rx_data_addr, len);
+    /* 把CPU1->CPU0的数据先落进驱动侧软件环形队列，避免用户态read()稍慢时直接丢包 */
+    spin_lock_irqsave(&rx_ring_lock, flags);
+    if (atomic_read(&rx_ring_count) >= RX_RING_SIZE) {
+        atomic_inc(&rx_drop_full);
+        spin_unlock_irqrestore(&rx_ring_lock, flags);
+        pr_warn_ratelimited("RX ring full, dropping packet len=%u node=%u\n", len, node_id);
+        return;
+    }
 
-    rx_msg_bytes = offsetof(struct amp_net_msg, data) + len;
+    slot = &rx_ring[rx_ring_tail];
+    memset(slot, 0, sizeof(*slot));
+    slot->msg.data_type = 0; /* 目前RX侧只回传数据类（业务/隧道IP包） */
+    slot->msg.ip = ip;
+    slot->msg.node_id = node_id;
+    slot->msg.len = len;
+    if (len > 0)
+        memcpy_fromio(slot->msg.data, rx_data_addr, len);
+    slot->msg_bytes = offsetof(struct amp_net_msg, data) + len;
+
+    rx_ring_tail = (rx_ring_tail + 1U) % RX_RING_SIZE;
+    atomic_inc(&rx_ring_count);
+    atomic_inc(&rx_enqueued);
+    spin_unlock_irqrestore(&rx_ring_lock, flags);
     wake_up_interruptible(&rx_wq);
 }

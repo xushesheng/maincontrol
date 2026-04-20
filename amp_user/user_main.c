@@ -13,6 +13,7 @@ int tun_fd = -1;
 
 int main(void)
 {
+    pthread_t t0;
     pthread_t t1;
     pthread_t t2;
     pthread_t t3;
@@ -29,6 +30,10 @@ int main(void)
 
     setup_gateway_rules();
 
+    if (pthread_create(&t0, NULL, amp_tx_thread, NULL) != 0) {
+        perror("pthread_create(amp_tx)");
+        return 1;
+    }
     if (pthread_create(&t1, NULL, tun_to_amp_thread, NULL) != 0) {
         perror("pthread_create(tun_to_amp)");
         return 1;
@@ -42,6 +47,7 @@ int main(void)
         return 1;
     }
 
+    pthread_join(t0, NULL);
     pthread_join(t1, NULL);
     pthread_join(t2, NULL);
     pthread_join(t3, NULL);

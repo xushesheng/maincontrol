@@ -12,7 +12,7 @@
 #include "user_config.h"
 
 /* 与驱动一致（保持已有字段语义） */
-struct amp_net_msg {
+struct  {
     uint32_t ip;
     uint32_t node_id;
     uint32_t len;
