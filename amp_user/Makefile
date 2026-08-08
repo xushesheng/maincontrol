@@ -1,4 +1,4 @@
-CC = arm-linux-gnueabihf-gcc
+CC = /home/fmsh/FMQLMP-Linux-SDK-Prj-20250408/gcc-linaro-7.5.0-2019.12-x86_64_aarch64-linux-gnu/bin/aarch64-linux-gnu-gcc
 
 TARGET = user_amp
 
@@ -10,8 +10,9 @@ SRCS = \
 
 OBJS = $(SRCS:.c=.o)
 
-CFLAGS = -I. -I/usr/arm-linux-gnueabihf/include
-LDFLAGS = -lpthread -lpcap
+CFLAGS = -I.
+# -I/usr/arm-linux-gnueabihf/include
+LDFLAGS = -lpthread
 
 all: $(TARGET)
 

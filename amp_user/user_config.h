@@ -4,11 +4,16 @@
 #ifndef USER_AMP_CONFIG_H
 #define USER_AMP_CONFIG_H
 
-#define AMP_DEV "/dev/amp_ipi"
-#define CAP_IFACE "eth1"
-#define CTRL_UDP_PORT 3409
+/* 设备名 */
+#define AMP_DATA_DEV "/dev/amp_ipi"
+#define AMP_CTRL_DEV "/dev/amp_ctrl"
+#define CAP_IFACE "eth0"
 
 #define MAX_PAYLOAD_SIZE 4096
+
+#define BUSINESS_PORT 3408
+#define CONTROL_PORT 3409
+#define CONTROL_REPORT_PORT 3419
 
 /* 聚合帧最大长度（只对“批帧 AMPB”限制 640，单包直发不受此限制） */
 #define AMP_BATCH_MAX_BYTES 640
@@ -17,11 +22,10 @@
 
 /* 聚合窗口：第一个包进入批次后，最多再等这么多 ms 看能不能凑更多包。
  * 调大：吞吐更好但交互/ ping RTT 更大；调小：时延更好但 SGI 次数更多。 */
-#define AMP_BATCH_TIMEOUT_MS 96
+#define AMP_BATCH_TIMEOUT_MS 60
 
-/* 止血版：业务/控制统一串行下发到驱动，避免并发踩写 TX 单槽 */
+/* 业务数据统一串行下发到驱动，避免并发踩写 TX 单槽 */
 #define AMP_TX_QUEUE_DEPTH 64
-#define AMP_CTRL_QUEUE_DEPTH 16
 
 /* 每次写完 /dev/amp_ipi 后，留一个很小的保护间隔，降低 TX 单槽覆盖概率 */
 #define AMP_TX_GUARD_US 200
@@ -31,5 +35,8 @@
 
 /* rf0 MTU：为了允许 >640 的 IP 包“单包直发” */
 #define RF0_MTU 1600
+
+/* 广播地址 192.168.1.255 网络字节序 */
+#define BROADCAST_IP_BE ((uint32_t)0xC0A801FF)
 
 #endif

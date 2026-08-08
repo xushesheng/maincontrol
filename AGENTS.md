@@ -4,27 +4,36 @@
 
 ## 项目背景
 
-本项目是一个 Zynq AMP 场景下的跨核通信工程，当前仓库已按驱动侧与用户态侧拆分为目录化结构，主要包含两部分：
+本项目是一个面向 Zynq AMP 场景的主控侧跨核通信工程。当前仓库聚焦 Linux 主控侧实现，按驱动侧与用户态侧拆分为目录化结构。
 
-- `amp_driver/`：Linux 内核侧 AMP IPC 驱动相关代码，负责 `/dev/amp_ipi` 接口、共享内存与寄存器映射、SGI/中断处理，以及业务数据和控制数据的收发处理。
-- `amp_user/`：Linux 用户态转发与控制面程序，负责 `rf0` TUN 设备创建、路由与 proxy ARP 配置、业务数据转发，以及控制 UDP 报文抓取和下发。
+当前仓库根目录主要包含：
+
+- `AGENTS.md`：仓库内代理协作约束。
+- `README.md`：项目说明与当前实现梳理。
+- `amp_driver/`：Linux 内核侧 AMP IPC 驱动源码与构建文件。
+- `amp_user/`：Linux 用户态主控程序源码与构建文件。
+
+其中两大核心目录职责如下：
+
+- `amp_driver/`：Linux 内核侧 AMP IPC 驱动，负责 `/dev/amp_ipi` 业务接口、`/dev/amp_ctrl` 控制接口、共享内存与控制寄存器映射、SGI/中断处理，以及 CPU0 与 CPU1 之间的业务/控制数据搬运。
+- `amp_user/`：Linux 用户态主控程序，负责 `rf0` TUN 设备创建、静态节点表路由与 `proxy_arp` 配置、业务数据聚合转发，以及控制 UDP 报文与驱动控制通道之间的透传。
 
 各目录下主要文件职责如下：
 
-- `amp_driver/driver_main.c`：驱动主入口，提供 `/dev/amp_ipi` 的读写接口，完成 probe/remove 和 IPI 处理注册。
-- `amp_driver/driver_txrx.c`：处理业务数据与控制数据发送流程，维护 IP 与节点号映射，并处理 CPU1 回传到 CPU0 的接收中断。
-- `amp_driver/driver_map.c`：负责共享内存、控制寄存器及相关地址资源的 `ioremap`、有效性检查和释放。
-- `amp_driver/driver_hardware.h`：定义硬件地址、SGI 编号、共享资源声明以及驱动侧核心函数声明。
-- `amp_driver/driver_struct.h`：定义驱动侧通信与控制相关结构体，作为协议数据组织基础。
+- `amp_driver/driver_main.c`：驱动主入口，提供 `/dev/amp_ipi` 和 `/dev/amp_ctrl` 的读写接口，完成 `probe/remove`、`misc` 设备注册以及 SGI 处理注册。
+- `amp_driver/driver_txrx.c`：处理业务数据与控制数据发送流程，维护 IP 与节点号映射，并处理 CPU1 回传到 CPU0 的接收中断，将业务/控制数据分别写入各自的 RX 软件环形队列。
+- `amp_driver/driver_map.c`：负责业务/控制共享内存、控制寄存器及相关地址资源的 `ioremap`、有效性检查、初始化和释放，并初始化业务/控制 RX 队列资源。
+- `amp_driver/driver_hardware.h`：定义硬件地址、控制位、SGI 编号、共享资源声明、环形队列声明以及驱动侧核心函数声明。
+- `amp_driver/driver_struct.h`：定义驱动侧业务消息与控制消息结构体，作为协议数据组织基础。
 - `amp_driver/Makefile`：驱动侧构建文件。
 
-- `amp_user/user_main.c`：用户态主程序入口，负责打开 `/dev/amp_ipi`、创建 `rf0`，并启动数据面与控制面线程。
-- `amp_user/user_datapath.c`：负责 TUN 设备收发、AMP 数据封装发送、批量聚合发送，以及从驱动读回数据后重新写回 TUN。
-- `amp_user/user_control.c`：负责通过 `pcap` 抓取控制 UDP 报文，校验控制帧后下发给驱动侧。
-- `amp_user/user_gateway.c`：负责本机网口地址识别、`rf0` 地址配置、路由、`proxy_arp` 和相关 `sysctl` 设置。
-- `amp_user/user_config.h`：定义用户态侧设备名、端口号、批量发送参数等配置宏。
-- `amp_user/user_struct.h`：定义用户态与驱动交互消息、控制帧和批量帧结构。
-- `amp_user/user_declaration.h`：汇总用户态全局变量、跨文件函数声明和公共接口。
+- `amp_user/user_main.c`：用户态主程序入口，负责打开 `/dev/amp_ipi` 与 `/dev/amp_ctrl`、创建 `rf0`、初始化控制 socket，并启动业务面与控制面线程。
+- `amp_user/user_datapath.c`：负责 TUN 设备收发、业务数据封装与下发、`AMPB` 批量聚合、单包直发，以及统一发送线程 `amp_tx_thread` 的实现。
+- `amp_user/user_control.c`：负责控制 UDP `3409` 报文收发、校验控制帧、缓存最近一次合法对端地址，并通过 `/dev/amp_ctrl` 与驱动侧交换完整控制帧。
+- `amp_user/user_gateway.c`：负责本机网口地址识别、静态节点表校验、`rf0` 地址配置、路由、`proxy_arp` 和相关 `sysctl` 设置。
+- `amp_user/user_config.h`：定义用户态侧设备名、业务/控制端口、批量发送参数、发送保护间隔和 `rf0` MTU 等配置宏。
+- `amp_user/user_struct.h`：定义用户态与驱动交互消息、控制帧和 `AMPB` 批量帧结构。
+- `amp_user/user_declaration.h`：汇总用户态全局变量、线程入口、跨文件函数声明和公共接口。
 - `amp_user/Makefile`：用户态程序构建文件。
 
 代理在分析、解释、修改代码时，应优先保持现有架构与协议语义稳定，不要在未说明影响范围的情况下随意调整接口、地址映射、线程模型、报文格式或网络拓扑假设。

@@ -11,8 +11,8 @@
 
 #include "user_config.h"
 
-/* 与驱动一致（保持已有字段语义） */
-struct  {
+/* 业务数据传输结构与驱动一致（保持已有字段语义） */
+struct amp_net_msg {
     uint32_t ip;
     uint32_t node_id;
     uint32_t len;
@@ -20,23 +20,12 @@ struct  {
     uint8_t data[MAX_PAYLOAD_SIZE];
 };
 
-/* 控制帧结构（保持原协议） */
-#pragma pack(push, 1)
-typedef struct {
-    uint16_t frame_header;  //帧头
-    uint8_t  frame_type;    //帧类型
-    uint8_t  dst_addr;      //目的地址
-    uint32_t frame_seq;     //帧序列号
-    uint32_t test_freq;     //测试信号频率
-    uint32_t test_enable;   //测试信号使能
-    uint32_t fixed_freq;    //定频频率
-    uint32_t net_test;      //组网数据发送测试
-    uint32_t loopback;      //数据自回环
-    uint32_t iq_swap;       //接收基带IQ对调
-    uint32_t attenuation;   //发射衰减系数
-    uint16_t frame_tail;    //帧尾
-} control_frame_t;
-#pragma pack(pop)
+/* 控制数据传输结构体 */
+struct amp_ctrl_msg {
+    uint32_t len;
+    uint8_t data_type;
+    uint8_t data[MAX_PAYLOAD_SIZE];
+};
 
 #pragma pack(push, 1)
 /*一批次帧头结构体*/

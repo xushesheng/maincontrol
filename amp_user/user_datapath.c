@@ -14,6 +14,7 @@
 #include <linux/if_tun.h>
 #include <netinet/ip.h>
 #include <netinet/ip_icmp.h>
+#include <netinet/udp.h>
 
 #include "user_declaration.h"
 
@@ -21,7 +22,6 @@ amp_tx_runtime_t amp_tx_runtime = {
     .lock = PTHREAD_MUTEX_INITIALIZER,
     .not_empty = PTHREAD_COND_INITIALIZER,
     .data_not_full = PTHREAD_COND_INITIALIZER,
-    .ctrl_not_full = PTHREAD_COND_INITIALIZER,
 };
 
 /***********************/
@@ -80,7 +80,7 @@ static int set_nonblock(int fd)
     return 0;
 }
 
-/* 调用驱动将payload写入AMP */
+/* 业务发送队列的底层入队 */
 static int amp_tx_enqueue_locked(amp_tx_slot_t *queue,
                                  unsigned int depth,
                                  unsigned int *tail,
@@ -111,7 +111,8 @@ static int amp_tx_enqueue_locked(amp_tx_slot_t *queue,
     return 0;
 }
 
-static int amp_tx_enqueue(int is_ctrl, const struct amp_net_msg *msg, size_t msg_bytes)
+/* 业务数据发送队列外层封装 */
+static int amp_tx_enqueue(const struct amp_net_msg *msg, size_t msg_bytes)
 {
     int rc;
 
@@ -119,32 +120,21 @@ static int amp_tx_enqueue(int is_ctrl, const struct amp_net_msg *msg, size_t msg
     if (rc != 0)
         return -1;
 
-    if (is_ctrl) {
-        rc = amp_tx_enqueue_locked(amp_tx_runtime.ctrl_q,
-                                   AMP_CTRL_QUEUE_DEPTH,
-                                   &amp_tx_runtime.ctrl_tail,
-                                   &amp_tx_runtime.ctrl_count,
-                                   &amp_tx_runtime.ctrl_not_full,
-                                   &amp_tx_runtime.ctrl_waits,
-                                   "amp ctrl tx",
-                                   msg,
-                                   msg_bytes);
-    } else {
-        rc = amp_tx_enqueue_locked(amp_tx_runtime.data_q,
-                                   AMP_TX_QUEUE_DEPTH,
-                                   &amp_tx_runtime.data_tail,
-                                   &amp_tx_runtime.data_count,
-                                   &amp_tx_runtime.data_not_full,
-                                   &amp_tx_runtime.data_waits,
-                                   "amp data tx",
-                                   msg,
-                                   msg_bytes);
-    }
+    rc = amp_tx_enqueue_locked(amp_tx_runtime.data_q,
+                               AMP_TX_QUEUE_DEPTH,
+                               &amp_tx_runtime.data_tail,
+                               &amp_tx_runtime.data_count,
+                               &amp_tx_runtime.data_not_full,
+                               &amp_tx_runtime.data_waits,
+                               "amp data tx",
+                               msg,
+                               msg_bytes);
 
     (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
     return rc;
 }
 
+/* 调用 write(amp_fd, ...) 写 /dev/amp_ipi */
 static int amp_write_msg_direct(const struct amp_net_msg *msg, size_t msg_bytes)
 {
     while (1) {
@@ -166,13 +156,14 @@ static int amp_write_msg_direct(const struct amp_net_msg *msg, size_t msg_bytes)
     }
 }
 
+/* 统一业务发送线程，避免多个线程同时写业务设备 */
 void *amp_tx_thread(void *arg)
 {
     amp_tx_slot_t slot;
 
     (void)arg;
 
-    while (1) {
+    while (g_running) {
         int rc = pthread_mutex_lock(&amp_tx_runtime.lock);
 
         if (rc != 0) {
@@ -180,7 +171,11 @@ void *amp_tx_thread(void *arg)
             break;
         }
 
-        while (amp_tx_runtime.ctrl_count == 0 && amp_tx_runtime.data_count == 0) {
+        while (amp_tx_runtime.data_count == 0) {
+            if (!g_running) {
+                (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
+                return NULL;
+            }
             rc = pthread_cond_wait(&amp_tx_runtime.not_empty, &amp_tx_runtime.lock);
             if (rc != 0) {
                 (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
@@ -189,17 +184,10 @@ void *amp_tx_thread(void *arg)
             }
         }
 
-        if (amp_tx_runtime.ctrl_count > 0) {
-            slot = amp_tx_runtime.ctrl_q[amp_tx_runtime.ctrl_head];
-            amp_tx_runtime.ctrl_head = (amp_tx_runtime.ctrl_head + 1U) % AMP_CTRL_QUEUE_DEPTH;
-            amp_tx_runtime.ctrl_count--;
-            pthread_cond_signal(&amp_tx_runtime.ctrl_not_full);
-        } else {
-            slot = amp_tx_runtime.data_q[amp_tx_runtime.data_head];
-            amp_tx_runtime.data_head = (amp_tx_runtime.data_head + 1U) % AMP_TX_QUEUE_DEPTH;
-            amp_tx_runtime.data_count--;
-            pthread_cond_signal(&amp_tx_runtime.data_not_full);
-        }
+        slot = amp_tx_runtime.data_q[amp_tx_runtime.data_head];
+        amp_tx_runtime.data_head = (amp_tx_runtime.data_head + 1U) % AMP_TX_QUEUE_DEPTH;
+        amp_tx_runtime.data_count--;
+        pthread_cond_signal(&amp_tx_runtime.data_not_full);
 
         (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
 
@@ -212,6 +200,7 @@ void *amp_tx_thread(void *arg)
     return NULL;
 }
 
+/* 构造一个业务 amp_net_msg 并入发送队列 */
 int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
 {
     struct amp_net_msg msg;         //创建发送结构体
@@ -222,32 +211,14 @@ int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
     }
 
     memset(&msg, 0, sizeof(msg));
-    msg.data_type = 0;
+    msg.data_type = 1;
     msg.ip = dst_ip;
-    msg.node_id = 255;
+    msg.node_id = 0;    //
     msg.len = (uint32_t)len;
     memcpy(msg.data, payload, len);
 
-    if (amp_tx_enqueue(0, &msg, offsetof(struct amp_net_msg, data) + msg.len) != 0) {
+    if (amp_tx_enqueue(&msg, offsetof(struct amp_net_msg, data) + msg.len) != 0) {
         fprintf(stderr, "[ERROR] amp data enqueue failed\n");
-        return -1;
-    }
-    return 0;
-}
-
-int amp_send_control_msg(const control_frame_t *ctrl_frame)
-{
-    struct amp_net_msg msg;
-
-    memset(&msg, 0, sizeof(msg));
-    msg.data_type = 1;
-    msg.node_id = ctrl_frame->dst_addr;
-    msg.ip = 0;
-    msg.len = sizeof(*ctrl_frame);
-    memcpy(msg.data, ctrl_frame, sizeof(*ctrl_frame));
-
-    if (amp_tx_enqueue(1, &msg, offsetof(struct amp_net_msg, data) + msg.len) != 0) {
-        fprintf(stderr, "[ERROR] amp ctrl enqueue failed\n");
         return -1;
     }
     return 0;
@@ -337,7 +308,9 @@ int amp_flush_batch_if_any(batch_state_t *b)
     return rc;
 }
 
-/* ping包判断函数  */
+/**********************
+*   ping包判断函数    *
+**********************/
 static int is_ping_or(const uint8_t *pkt, size_t len)
 {
     const struct iphdr *ip;
@@ -361,7 +334,43 @@ static int is_ping_or(const uint8_t *pkt, size_t len)
     return ic->type == ICMP_ECHO || ic->type == ICMP_ECHOREPLY;    //包类型为ICMP请求或应答返回1，否则返回0
 }
 
-/* 线程1：从TUN读取需要“跨射频”的IP包，写入驱动（-> CPU1 -> 对端） */
+/* 对UDP业务做端口分流：
+ * 3408 进入业务面；
+ * 3409 保留给独立控制面，不进入TUN业务通道；
+ * 其他UDP流量当前不进入AMP业务面。 */
+static int classify_udp_business_port(const uint8_t *pkt, size_t len)
+{
+    const struct iphdr *ip;
+    size_t ihl;
+    const struct udphdr *udp;
+    uint16_t src_port;
+    uint16_t dst_port;
+
+    if (len < sizeof(struct iphdr))
+        return 0;
+
+    ip = (const struct iphdr *)pkt;
+    if (ip->version != 4 || ip->protocol != IPPROTO_UDP)
+        return 0;
+
+    ihl = (size_t)ip->ihl * 4;
+    if (ihl < sizeof(struct iphdr) || len < ihl + sizeof(struct udphdr))
+        return -1;
+
+    udp = (const struct udphdr *)(pkt + ihl);
+    src_port = ntohs(udp->source);
+    dst_port = ntohs(udp->dest);
+
+    if (src_port == CONTROL_PORT || dst_port == CONTROL_PORT)
+        return -1;
+    if (src_port == BUSINESS_PORT || dst_port == BUSINESS_PORT)
+        return 1;
+    return -1;
+}
+
+/************************************************************* * 
+* 线程1：从TUN读取需要“跨射频”的IP包，写入驱动（-> CPU1 -> 对端）*
+ ***************************************************************/
 void *tun_to_amp_thread(void *arg)
 {
     uint8_t buf[MAX_PAYLOAD_SIZE];
@@ -372,8 +381,8 @@ void *tun_to_amp_thread(void *arg)
     batch_reset(&batch);                //初始化批次帧
     (void)set_nonblock(tun_fd);
 
-    while (1) {
-        int timeout_ms = (batch.count == 0) ? -1 : AMP_BATCH_TIMEOUT_MS;    //batch 为空：timeout=-1;batch非空：timeout=96
+    while (g_running) {
+        int timeout_ms = (batch.count == 0) ? -1 : AMP_BATCH_TIMEOUT_MS;    //batch 为空：timeout=-1;batch非空：timeout=60
         struct pollfd pfd = { .fd = tun_fd, .events = POLLIN };             //初始化poll阻塞，设置标识符为tun_fd,events为pollin可读
         int prc = poll(&pfd, 1, timeout_ms);        //阻塞pfd标识timeout_ms时间
 
@@ -396,6 +405,7 @@ void *tun_to_amp_thread(void *arg)
             struct iphdr *ip;
             size_t pkt_len;
             uint32_t dst_ip;
+            int udp_class;
             int is_ping;
             size_t agg_overhead;
             int rc;
@@ -416,11 +426,15 @@ void *tun_to_amp_thread(void *arg)
             ip = (struct iphdr *)buf;
             if (ip->version != 4)
                 continue;
-            if (!is_peer_pc_addr(ip->daddr))       //确定目的IP为对端节点IP
+            if (ip->daddr != BROADCAST_IP_BE && !is_peer_pc_addr(ip->daddr))       //广播+对端节点IP才走AMP通道
                 continue;
 
             pkt_len = (size_t)n;      //定义pkt_len设置为本条IP包长度
             dst_ip = ip->daddr;       //定义dst_ip赋值为当前IP包目的地址
+            udp_class = classify_udp_business_port(buf, pkt_len);
+
+            if (udp_class < 0)
+                continue;
 
 #if AMP_ICMP_FASTPATH   //是否开启ICMP包快速通道
             is_ping = is_ping_or(buf, pkt_len); //判断是否为ping包，是的话置is_ping为1
@@ -485,14 +499,16 @@ out:
     return NULL;
 }
 
-/* 线程2：从驱动read()取出对端发来的IP包，写回TUN，让内核继续路由到eth1发给本地PC */
+/**************************************************************************** 
+* 线程2：从驱动read()取出对端发来的IP包，写回TUN，让内核继续路由到eth0发给本地PC *
+*****************************************************************************/
 void *amp_to_tun_thread(void *arg)
 {
     struct amp_net_msg msg;
 
     (void)arg;
 
-    while (1) {
+    while (g_running) {
         ssize_t n = read(amp_fd, &msg, sizeof(msg));
 		/*********读到数据后过滤一遍下列条件**********/
 
@@ -506,7 +522,7 @@ void *amp_to_tun_thread(void *arg)
             continue;
         if (msg.len == 0 || msg.len > MAX_PAYLOAD_SIZE)
             continue;
-        /* 目前约定：驱动RX回来的都是数据类（data_type==0），控制数据仍走CPU0->CPU1方向即可 */
+        /* 当前 /dev/amp_ipi RX 路径只回传业务数据 */
 
         /* 兼容：
          * - AMPB：拆包写回 TUN
