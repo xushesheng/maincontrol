@@ -50,6 +50,34 @@ void __iomem *rx_ctrl_type;
 void __iomem *rx_ctrl_data_addr;
 void __iomem *rx_ctrl_reg;
 
+/* 共享内存/寄存器映射表：物理地址 -> 全局指针，统一 ioremap/iounmap */
+struct amp_io_entry {
+    void __iomem **slot;
+    resource_size_t phys;
+    unsigned long size;
+};
+
+static struct amp_io_entry amp_io_map[] = {
+    { &tx_ip_addr,        TX_NET_IP_ADDR,        4 },
+    { &tx_node_id,        TX_NET_NODE_ID,        4 },
+    { &tx_len,            TX_NET_IP_LEN,         4 },
+    { &tx_type,           TX_NET_TYPE,           4 },
+    { &tx_data_addr,      IP_TX_RAM_ADDR,        MAX_PAYLOAD_SIZE },
+    { &tx_ctrl_len,       TX_CTRL_LEN,           4 },
+    { &tx_ctrl_type,      TX_CTRL_TYPE,          4 },
+    { &tx_ctrl_data_addr, CTRL_TX_RAM_ADDR,      MAX_PAYLOAD_SIZE },
+    { &ctrl_reg,          CTRL_REG_ADDR,         4 },
+    { &rx_ip_addr,        RX_NET_IP_ADDR,        4 },
+    { &rx_node_id,        RX_NET_NODE_ID,        4 },
+    { &rx_len,            RX_NET_IP_LEN,         4 },
+    { &rx_type,           RX_NET_TYPE,           4 },
+    { &rx_data_addr,      IP_RX_RAM_ADDR,        MAX_PAYLOAD_SIZE },
+    { &rx_ctrl_len,       RX_CTRL_LEN,           4 },
+    { &rx_ctrl_type,      RX_CTRL_TYPE,          4 },
+    { &rx_ctrl_data_addr, CTRL_RX_RAM_ADDR,      MAX_PAYLOAD_SIZE },
+    { &rx_ctrl_reg,       RX_CTRL_REG_ADDR,      4 },
+};
+
 /*******************/
 /*    映射验证函数  检查业务/控制两套共享内存和寄存器是否都映射成功*/
 /*******************/
@@ -67,42 +95,21 @@ bool driver_amp_resources_ready(void)
 /*******************/
 int driver_amp_map_resources(void)
 {
-    /* 映射TX共享内存 */
-    tx_ip_addr = ioremap_nocache(TX_NET_IP_ADDR, 4);
-    tx_node_id = ioremap_nocache(TX_NET_NODE_ID, 4);
-    tx_len = ioremap_nocache(TX_NET_IP_LEN, 4);
-    tx_type = ioremap_nocache(TX_NET_TYPE, 4);
-    tx_data_addr = ioremap_nocache(IP_TX_RAM_ADDR, MAX_PAYLOAD_SIZE);
-    tx_ctrl_len = ioremap_nocache(TX_CTRL_LEN, 4);
-    tx_ctrl_type = ioremap_nocache(TX_CTRL_TYPE, 4);
-    tx_ctrl_data_addr = ioremap_nocache(CTRL_TX_RAM_ADDR, MAX_PAYLOAD_SIZE);
+    size_t i;
+    size_t n = sizeof(amp_io_map) / sizeof(amp_io_map[0]);
 
-    /* 映射数据模式寄存器 */
-    ctrl_reg = ioremap_nocache(CTRL_REG_ADDR, 4);
+    for (i = 0; i < n; i++)
+        *amp_io_map[i].slot = ioremap_nocache(amp_io_map[i].phys, amp_io_map[i].size);
 
-    /* 映射RX共享内存 */
-    rx_ip_addr = ioremap_nocache(RX_NET_IP_ADDR, 4);
-    rx_node_id = ioremap_nocache(RX_NET_NODE_ID, 4);
-    rx_len = ioremap_nocache(RX_NET_IP_LEN, 4);
-    rx_type = ioremap_nocache(RX_NET_TYPE, 4);
-    rx_data_addr = ioremap_nocache(IP_RX_RAM_ADDR, MAX_PAYLOAD_SIZE);
-    rx_ctrl_len = ioremap_nocache(RX_CTRL_LEN, 4);
-    rx_ctrl_type = ioremap_nocache(RX_CTRL_TYPE, 4);
-    rx_ctrl_data_addr = ioremap_nocache(CTRL_RX_RAM_ADDR, MAX_PAYLOAD_SIZE);
-    rx_ctrl_reg = ioremap_nocache(RX_CTRL_REG_ADDR, 4);
-
-    /* 检查映射是否成功 */
-    if (!driver_amp_resources_ready()){
-        //pr_err("Failed to ioremap shared memory\n");
+    if (!driver_amp_resources_ready())
         return -ENOMEM;
-    }
 
     /* 初始化CPU0->CPU1与CPU1->CPU0数据模式寄存器为0x00 */
     writeb(0x00, ctrl_reg);
     writeb(0x00, rx_ctrl_reg);
     wmb();
 
-    /* 初始化RX等待队列（用户态read()阻塞等待CPU1->CPU0数据） */
+    /* 初始化业务RX等待队列（用户态read()阻塞等待CPU1->CPU0数据） */
     init_waitqueue_head(&rx_wq);
     spin_lock_init(&rx_ring_lock);
     memset(rx_ring, 0, sizeof(rx_ring));
@@ -131,41 +138,13 @@ int driver_amp_map_resources(void)
 /********************************/
 void driver_amp_unmap_resources(void)
 {
-    if (tx_ip_addr) iounmap(tx_ip_addr);
-    if (tx_node_id) iounmap(tx_node_id);
-    if (tx_len) iounmap(tx_len);
-    if (tx_type) iounmap(tx_type);
-    if (tx_data_addr) iounmap(tx_data_addr);
-    if (tx_ctrl_len) iounmap(tx_ctrl_len);
-    if (tx_ctrl_type) iounmap(tx_ctrl_type);
-    if (tx_ctrl_data_addr) iounmap(tx_ctrl_data_addr);
-    if (ctrl_reg) iounmap(ctrl_reg);
-    if (rx_ip_addr) iounmap(rx_ip_addr);
-    if (rx_node_id) iounmap(rx_node_id);
-    if (rx_len) iounmap(rx_len);
-    if (rx_type) iounmap(rx_type);
-    if (rx_data_addr) iounmap(rx_data_addr);
-    if (rx_ctrl_len) iounmap(rx_ctrl_len);
-    if (rx_ctrl_type) iounmap(rx_ctrl_type);
-    if (rx_ctrl_data_addr) iounmap(rx_ctrl_data_addr);
-    if (rx_ctrl_reg) iounmap(rx_ctrl_reg);
+    size_t i;
+    size_t n = sizeof(amp_io_map) / sizeof(amp_io_map[0]);
 
-    tx_ip_addr = NULL;
-    tx_node_id = NULL;
-    tx_len = NULL;
-    tx_type = NULL;
-    tx_data_addr = NULL;
-    tx_ctrl_len = NULL;
-    tx_ctrl_type = NULL;
-    tx_ctrl_data_addr = NULL;
-    ctrl_reg = NULL;
-    rx_ip_addr = NULL;
-    rx_node_id = NULL;
-    rx_len = NULL;
-    rx_type = NULL;
-    rx_data_addr = NULL;
-    rx_ctrl_len = NULL;
-    rx_ctrl_type = NULL;
-    rx_ctrl_data_addr = NULL;
-    rx_ctrl_reg = NULL;
+    for (i = 0; i < n; i++) {
+        if (*amp_io_map[i].slot) {
+            iounmap(*amp_io_map[i].slot);
+            *amp_io_map[i].slot = NULL;
+        }
+    }
 }

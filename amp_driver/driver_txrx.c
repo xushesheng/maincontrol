@@ -18,6 +18,8 @@
 /************************
 *******IP-节点对应表*******
 ************************/
+/* IP -> 节点号映射（协议A：上位机 IP = 192.168.1.(10 + node_id)，node 0~31）
+ * 组播 239.0.0.1 -> 节点 254，广播 192.168.1.255 -> 节点 255，其余视为非法 */
 u32 ip_to_nodeid(__be32 ip_be)
 {
     u32 ip = ntohl(ip_be);          // 转成主机字节序，便于拆字节
@@ -141,7 +143,7 @@ static int enqueue_business_rx_msg(u32 ip, u32 node_id, u32 data_type, u32 len)
 /****************************************/
 /* 把CPU1来的控制数据放入驱动侧环形缓冲区 */
 /****************************************/
-/* static int enqueue_ctrl_rx_msg(u32 data_type, u32 len)
+static int enqueue_ctrl_rx_msg(u32 data_type, u32 len)
 {
     unsigned long flags;
     struct amp_ctrl_rx_slot *slot;
@@ -168,7 +170,7 @@ static int enqueue_business_rx_msg(u32 ip, u32 node_id, u32 data_type, u32 len)
     spin_unlock_irqrestore(&ctrl_rx_ring_lock, flags);
     wake_up_interruptible(&ctrl_rx_wq);
     return 0;
-} */
+}
 
 
 /*************************************/
@@ -204,6 +206,10 @@ static int wait_for_tx_slot_idle(void)
     return 0;
 }
 
+
+/****************************/
+/* 语音或其他业务数据写入进程 */
+/****************************/
 int process_udp_data(struct amp_net_msg *msg)
 {
     u32 nodeid;
@@ -318,12 +324,8 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
     rmb();
     pr_info_ratelimited("AMP RX: sgi=%d rx_ctrl_reg readb=0x%02x readl=0x%08x\n",ipinr, rx_mode8, rx_mode32);
 
-    //if (rx_mode & 0x01) {
-        //u32 len;
-        //u32 node_id;
-        //u32 ip;
-        //u32 data_type;
-
+    if (rx_mode8 & 0x01) {
+        /* 业务 RX：CPU1 把业务数据放在 0x39001000 业务 RX 区 */
         len = readl(rx_len);
         rmb();
         data_type = readl(rx_type);
@@ -342,11 +344,8 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
         }
 
         clear_rx_enable_bit();
-    //}
-/*     else if (rx_mode & 0x02) {
-        u32 len;
-        u32 data_type;
-
+    } else if (rx_mode8 & 0x02) {
+        /* 控制 RX：CPU1 把控制数据放在 0x39003000 控制 RX 区 */
         len = readl(rx_ctrl_len);
         rmb();
         data_type = readl(rx_ctrl_type);
@@ -358,16 +357,11 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
             if (data_type == 0)
                 data_type = 1;
             enqueue_ctrl_rx_msg(data_type, len);
-       }
+        }
 
         clear_rx_enable_bit();
-    }
-    else if (!(rx_mode & 0x03)) {
-        u32 len;
-        u32 node_id;
-        u32 ip;
-        u32 data_type;
-
+    } else if (!(rx_mode8 & 0x03)) {
+        /* 兜底：rx_ctrl_reg 两位都未置位时按业务 RX 处理，兼容 CPU1 未置位的场景 */
         len = readl(rx_len);
         rmb();
         data_type = readl(rx_type);
@@ -386,5 +380,5 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
         }
 
         clear_rx_enable_bit();
-    } */
+    }
 }

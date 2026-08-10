@@ -13,6 +13,16 @@ int amp_fd = -1;
 int ctrl_fd = -1;
 int tun_fd = -1;
 
+/* ============================================================
+ * 主控用户态线程模型（主线程 + 5 个工作线程）
+ *   amp_tx_thread            统一写 /dev/amp_ipi（业务），串行化避免并发踩 TX 单槽
+ *   tun_to_amp_thread        TUN(rf0) 读 IP 包 -> 聚合/单发 -> /dev/amp_ipi（业务上行）
+ *   amp_to_tun_thread        /dev/amp_ipi 读 -> 拆 AMPB/原始 IP -> TUN(rf0)（业务下行）
+ *   control_rx_to_amp_thread 网管 UDP 3409 -> /dev/amp_ctrl（控制指令上行）
+ *   control_amp_to_udp_thread /dev/amp_ctrl -> 网管 UDP 3419（控制回执/上报下行）
+ * 三大设备 fd：amp_fd(/dev/amp_ipi)、ctrl_fd(/dev/amp_ctrl)、tun_fd(rf0)
+ * ============================================================ */
+
 volatile int g_running = 1;
 
 int main(void)

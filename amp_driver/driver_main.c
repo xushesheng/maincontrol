@@ -12,6 +12,7 @@
 #include <linux/irqchip/arm-gic.h>
 #include <asm/smp.h>
 #include <linux/io.h>
+#include <linux/err.h>
 
 #include "driver_hardware.h"
 
@@ -19,6 +20,53 @@
 static DEFINE_MUTEX(amp_tx_lock);
 static DEFINE_MUTEX(amp_read_lock);
 static DEFINE_MUTEX(amp_ctrl_read_lock);
+
+/**************************************/
+/* 公共：从用户态拷贝一条 AMP 消息并校验 */
+/* hdr_size = offsetof(struct X, data) */
+/* len_off / dtype_off 为对应字段偏移   */
+/**************************************/
+static void *amp_msg_from_user(const char __user *buf, size_t len,
+                               size_t hdr_size, size_t len_off, size_t dtype_off)
+{
+    u32 plen;
+    void *msg;
+
+    if (len < hdr_size)
+        return ERR_PTR(-EINVAL);
+
+    msg = kzalloc(hdr_size + MAX_PAYLOAD_SIZE, GFP_KERNEL);
+    if (!msg)
+        return ERR_PTR(-ENOMEM);
+
+    if (copy_from_user(msg, buf, hdr_size)) {
+        kfree(msg);
+        return ERR_PTR(-EFAULT);
+    }
+
+    plen = *(u32 *)((char *)msg + len_off);
+    if (plen > MAX_PAYLOAD_SIZE) {
+        kfree(msg);
+        return ERR_PTR(-EINVAL);
+    }
+
+    /* 严格等长校验：用户传入长度必须精确等于 header + 载荷，避免短写导致协议错位 */
+    if (len != hdr_size + plen) {
+        kfree(msg);
+        return ERR_PTR(-EINVAL);
+    }
+
+    if (plen > 0 &&
+        copy_from_user((char *)msg + hdr_size, buf + hdr_size, plen)) {
+        kfree(msg);
+        return ERR_PTR(-EFAULT);
+    }
+
+    if (*(u8 *)((char *)msg + dtype_off) == 0)
+        *(u8 *)((char *)msg + dtype_off) = 1;
+
+    return msg;
+}
 
 /*************************/
 /* 用户态业务数据写入接口 */
@@ -28,69 +76,34 @@ ssize_t amp_write(struct file *file, const char __user *buf, size_t len, loff_t 
     struct amp_net_msg *msg;
     int ret;
 
-    msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-    if (!msg)
-        return -ENOMEM;
+    msg = amp_msg_from_user(buf, len,
+                            offsetof(struct amp_net_msg, data),
+                            offsetof(struct amp_net_msg, len),
+                            offsetof(struct amp_net_msg, data_type));
+    if (IS_ERR(msg))
+        return PTR_ERR(msg);
 
-    /* 检查最小长度 */
-    if (len < offsetof(struct amp_net_msg, data)) {
-        ret = -EINVAL;
-        goto out_free;
-    }
-
-    /* 复制消息头部 */
-    if (copy_from_user(msg, buf, offsetof(struct amp_net_msg, data))) {
-        ret = -EFAULT;
-        goto out_free;
-    }
-
-    /* 检查数据长度是否超出 */
-    if (msg->len > MAX_PAYLOAD_SIZE) {
-        ret = -EINVAL;
-        goto out_free;
-    }
-
-    /* 严格等长校验：用户传入长度必须精确等于 header + 载荷，避免短写导致协议错位 */
-    if (len != offsetof(struct amp_net_msg, data) + msg->len) {
-        ret = -EINVAL;
-        goto out_free;
-    }
-
-    /* 复制数据部分 */
-    if (msg->len > 0) {
-        if (copy_from_user(msg->data, buf + offsetof(struct amp_net_msg, data), msg->len)) {
-            ret = -EFAULT;
-            goto out_free;
-        }
-    }
-
-    /* 检查共享内存映射 */
     if (!driver_amp_resources_ready() || !ctrl_reg) {
         ret = -ENODEV;
         goto out_free;
     }
 
-    /* mutex_lock_interruptible是 Linux 内核 互斥锁（mutex） API 中的一种加锁 */
     if (mutex_lock_interruptible(&amp_tx_lock)) {
         ret = -ERESTARTSYS;
         goto out_free;
     }
 
-    if (msg->data_type == 0)
-        msg->data_type = 1;
-
     ret = process_udp_data(msg);
     if (ret)
-        goto out_unlock;    //写入之后解锁
+        goto out_unlock;
 
     pr_info_ratelimited("TX: ip=%pI4 len=%u target=%u sgi=%u\n",
             &msg->ip, msg->len, 1, AMP_SGI_TX);
 
-    /* 触发中断通知CPU1 */
     smp_kick_ipi(cpumask_of(1), AMP_SGI_TX);
     ret = offsetof(struct amp_net_msg, data) + msg->len;
 
-out_unlock:     //解锁写入互斥锁
+out_unlock:
     mutex_unlock(&amp_tx_lock);
 out_free:
     kfree(msg);
@@ -105,60 +118,26 @@ ssize_t amp_ctrl_write(struct file *file, const char __user *buf, size_t len, lo
     struct amp_ctrl_msg *msg;
     int ret;
 
-    msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-    if (!msg)
-        return -ENOMEM;
+    msg = amp_msg_from_user(buf, len,
+                            offsetof(struct amp_ctrl_msg, data),
+                            offsetof(struct amp_ctrl_msg, len),
+                            offsetof(struct amp_ctrl_msg, data_type));
+    if (IS_ERR(msg))
+        return PTR_ERR(msg);
 
-    /* 检查最小长度 */
-    if (len < offsetof(struct amp_ctrl_msg, data)) {
-        ret = -EINVAL;
-        goto out_free;
-    }
-
-    /* 复制消息头部 */
-    if (copy_from_user(msg, buf, offsetof(struct amp_ctrl_msg, data))) {
-        ret = -EFAULT;
-        goto out_free;
-    }
-
-    /* 检查数据长度是否超出 */
-    if (msg->len > MAX_PAYLOAD_SIZE) {
-        ret = -EINVAL;
-        goto out_free;
-    }
-  
-    /* 严格等长校验：用户传入长度必须精确等于 header + 载荷，避免短写导致协议错位 */
-    if (len != offsetof(struct amp_ctrl_msg, data) + msg->len) {
-        ret = -EINVAL;
-        goto out_free;
-    }
-    
-    /* 复制数据部分 */
-    if (msg->len > 0) {
-        if (copy_from_user(msg->data, buf + offsetof(struct amp_ctrl_msg, data), msg->len)) {
-            ret = -EFAULT;
-            goto out_free;
-        }
-    }
-
-    /* 检查共享内存映射 */
     if (!driver_amp_resources_ready() || !ctrl_reg) {
         ret = -ENODEV;
         goto out_free;
     }
 
-    /* mutex_lock_interruptible是 Linux 内核 互斥锁（mutex） API 中的一种加锁 */
     if (mutex_lock_interruptible(&amp_tx_lock)) {
         ret = -ERESTARTSYS;
         goto out_free;
     }
 
-    if (msg->data_type == 0)
-        msg->data_type = 1;
-
     ret = process_ctrl_data(msg);
     if (ret)
-        goto out_unlock;    //写入成功之后解锁
+        goto out_unlock;
 
     pr_info_ratelimited("CTRL TX: len=%u target=%u sgi=%u\n",
             msg->len, 1, AMP_SGI_TX);

@@ -222,6 +222,9 @@ static uint32_t ctrl_read_be32(const uint8_t *p)
 
 /***********************************
  *          异或校验计算函数         *
+ * 协议A 第67行：校验和 = 头区域(类型+计数) 与 数据域 每个字节按位异或。
+ * 本帧布局：pkt[10]=类型、pkt[11]=计数、pkt[12..] = 数据域、pkt[len-1]=校验和。
+ * 故从 pkt[10] 异或至 pkt[len-2]，结果应与 pkt[len-1] 相等。
  **********************************/
 static unsigned char ctrl_xor_checksum(const uint8_t *pkt, size_t len)
 {
@@ -243,29 +246,6 @@ static bool ctrl_frame_is_valid(const uint8_t *pkt, size_t len)
     if (!pkt || len < 13 || len > MAX_PAYLOAD_SIZE)
         return false;
     return ctrl_xor_checksum(pkt, len) == pkt[len - 1];
-}
-
-/***********************************
- *     读取指定网络接口(eth0)的IPv4地址 *
- **********************************/
-static int get_iface_ipv4(const char *ifname, struct in_addr *addr)
-{
-    int fd = socket(AF_INET, SOCK_DGRAM, 0);
-    struct ifreq ifr;
-
-    if (fd < 0)
-        return -1;
-
-    memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
-    if (ioctl(fd, SIOCGIFADDR, &ifr) < 0) {
-        close(fd);
-        return -1;
-    }
-
-    *addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr;
-    close(fd);
-    return 0;
 }
 
 /***********************************

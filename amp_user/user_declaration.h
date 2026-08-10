@@ -35,6 +35,9 @@ typedef struct {
 
 extern amp_tx_runtime_t amp_tx_runtime;
 
+/* 读取指定网络接口的 IPv4 地址（定义见 user_gateway.c，user_control.c 复用） */
+int get_iface_ipv4(const char *ifname, struct in_addr *addr);
+
 int tun_alloc(const char *devname);
 int tun_write_packet(int fd, const uint8_t *pkt, size_t len);
 void setup_gateway_rules(void);

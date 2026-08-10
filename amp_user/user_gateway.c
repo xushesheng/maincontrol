@@ -15,54 +15,21 @@
 /* 创建一个节点的结构体 */
 typedef struct {
     uint8_t node_id;
-    const char *board_ip;
-    const char *pc_ip;
-    const char *rf_ip_cidr;
+    char board_ip[16];
+    char pc_ip[16];
+    char rf_ip_cidr[16];
     uint32_t board_ip_be;
     uint32_t pc_ip_be;
 } gateway_node_t;
 
 /*
- * board_ip 设置为本地板卡IP on eth0.
- * pc_ip 必须匹配当前驱动侧的映射规则:
- * 192.168.1.(10 + node_id) <-> node_id.
+ * 节点表按规则在 prepare_gateway_nodes() 中运行时生成，不在此硬编码：
+ *   board_ip  = 192.168.1.(50 + node_id)   // 本地板卡IP on eth0
+ *   pc_ip     = 192.168.1.(10 + node_id)   // 与驱动侧 ip_to_nodeid 映射一致
+ *   rf_ip     = 10.255.0.(10 + node_id)/24
  */
-static gateway_node_t gateway_nodes[] = {
-    { 0, "192.168.1.50", "192.168.1.10", "10.255.0.10/24", 0, 0 },
-    { 1, "192.168.1.51", "192.168.1.11", "10.255.0.11/24", 0, 0 },
-    { 2, "192.168.1.52", "192.168.1.12", "10.255.0.12/24", 0, 0 },
-    { 3, "192.168.1.53", "192.168.1.13", "10.255.0.13/24", 0, 0 },
-    { 4, "192.168.1.54", "192.168.1.14", "10.255.0.14/24", 0, 0 },
-    { 5, "192.168.1.55", "192.168.1.15", "10.255.0.15/24", 0, 0 },
-    { 6, "192.168.1.56", "192.168.1.16", "10.255.0.16/24", 0, 0 },
-    { 7, "192.168.1.57", "192.168.1.17", "10.255.0.17/24", 0, 0 },
-    { 8, "192.168.1.58", "192.168.1.18", "10.255.0.18/24", 0, 0 },
-    { 9, "192.168.1.59", "192.168.1.19", "10.255.0.19/24", 0, 0 },
-    { 10, "192.168.1.60", "192.168.1.20", "10.255.0.20/24", 0, 0 },
-    { 11, "192.168.1.61", "192.168.1.21", "10.255.0.21/24", 0, 0 },
-    { 12, "192.168.1.62", "192.168.1.22", "10.255.0.22/24", 0, 0 },
-    { 13, "192.168.1.63", "192.168.1.23", "10.255.0.23/24", 0, 0 },
-    { 14, "192.168.1.64", "192.168.1.24", "10.255.0.24/24", 0, 0 },
-    { 15, "192.168.1.65", "192.168.1.25", "10.255.0.25/24", 0, 0 },
-    { 16, "192.168.1.66", "192.168.1.26", "10.255.0.26/24", 0, 0 },
-    { 17, "192.168.1.67", "192.168.1.27", "10.255.0.27/24", 0, 0 },
-    { 18, "192.168.1.68", "192.168.1.28", "10.255.0.28/24", 0, 0 },
-    { 19, "192.168.1.69", "192.168.1.29", "10.255.0.29/24", 0, 0 },
-    { 20, "192.168.1.70", "192.168.1.30", "10.255.0.30/24", 0, 0 },
-    { 21, "192.168.1.71", "192.168.1.31", "10.255.0.31/24", 0, 0 },
-    { 22, "192.168.1.72", "192.168.1.32", "10.255.0.32/24", 0, 0 },
-    { 23, "192.168.1.73", "192.168.1.33", "10.255.0.33/24", 0, 0 },
-    { 24, "192.168.1.74", "192.168.1.34", "10.255.0.34/24", 0, 0 },
-    { 25, "192.168.1.75", "192.168.1.35", "10.255.0.35/24", 0, 0 },
-    { 26, "192.168.1.76", "192.168.1.36", "10.255.0.36/24", 0, 0 },
-    { 27, "192.168.1.77", "192.168.1.37", "10.255.0.37/24", 0, 0 },
-    { 28, "192.168.1.78", "192.168.1.38", "10.255.0.38/24", 0, 0 },
-    { 29, "192.168.1.79", "192.168.1.39", "10.255.0.39/24", 0, 0 },
-    { 30, "192.168.1.80", "192.168.1.40", "10.255.0.40/24", 0, 0 },
-    { 31, "192.168.1.81", "192.168.1.41", "10.255.0.41/24", 0, 0 },
-};//分别代表：节点号，设备IP，电脑IP，TUN虚拟网卡IP
-
-#define GATEWAY_NODE_COUNT (sizeof(gateway_nodes) / sizeof(gateway_nodes[0]))
+#define GATEWAY_NODE_COUNT 32
+static gateway_node_t gateway_nodes[GATEWAY_NODE_COUNT];
 
 static gateway_node_t *self_node = NULL;
 static int gateway_nodes_ready = 0;
@@ -80,66 +47,31 @@ static int parse_ipv4_be(const char *ip_str, uint32_t *ip_be)
     return 0;
 }
 
-/* 根据 node_id 推导出这个节点理论上应该对应的 pc_ip */
-static int expected_pc_ip_be(uint8_t node_id, uint32_t *ip_be)
-{
-    char ip_str[32];
-
-    if (node_id > 31)       //节点0使用
-        return -1;
-
-    snprintf(ip_str, sizeof(ip_str), "192.168.1.%u", (unsigned int)(10 + node_id));
-    return parse_ipv4_be(ip_str, ip_be);        //转换成整数返回
-}
-
-/* 对静态节点表做一次预处理和合法性检查 */
+/* 按规则生成 32 节点表，并解析出网络字节序地址 */
 static int prepare_gateway_nodes(void)
 {
     size_t i;
-    size_t j;
+
     if (gateway_nodes_ready)
         return 0;
+
     for (i = 0; i < GATEWAY_NODE_COUNT; i++) {
-        uint32_t expected_pc_be;        //定义变量 expected_pc_be，保存理论 pc_ip
-        /* 把当前节点的 board_ip 从字符串解析到 board_ip_be；失败就打印错误并返回 */
-        if (parse_ipv4_be(gateway_nodes[i].board_ip, &gateway_nodes[i].board_ip_be) != 0) {
-            fprintf(stderr, "[ERROR] bad board_ip in node table: %s\n", gateway_nodes[i].board_ip);
+        gateway_nodes[i].node_id = (uint8_t)i;
+        snprintf(gateway_nodes[i].board_ip, sizeof(gateway_nodes[i].board_ip),
+                 "192.168.1.%u", 50u + (unsigned)i);
+        snprintf(gateway_nodes[i].pc_ip, sizeof(gateway_nodes[i].pc_ip),
+                 "192.168.1.%u", 10u + (unsigned)i);
+        snprintf(gateway_nodes[i].rf_ip_cidr, sizeof(gateway_nodes[i].rf_ip_cidr),
+                 "10.255.0.%u/24", 10u + (unsigned)i);
+
+        if (parse_ipv4_be(gateway_nodes[i].board_ip, &gateway_nodes[i].board_ip_be) != 0 ||
+            parse_ipv4_be(gateway_nodes[i].pc_ip, &gateway_nodes[i].pc_ip_be) != 0) {
+            fprintf(stderr, "[ERROR] bad generated ip in node %zu\n", i);
             return -1;
-        }
-        /* 把当前节点的 pc_ip 从字符串解析到 pc_ip_be；失败就打印错误并返回 */
-        if (parse_ipv4_be(gateway_nodes[i].pc_ip, &gateway_nodes[i].pc_ip_be) != 0) {
-            fprintf(stderr, "[ERROR] bad pc_ip in node table: %s\n", gateway_nodes[i].pc_ip);
-            return -1;
-        }
-        /* 校验 pc_ip 是否真的符合 node_id -> pc_ip 的驱动映射规则；不符合就报错退出 */
-        if (expected_pc_ip_be(gateway_nodes[i].node_id, &expected_pc_be) != 0 ||
-            expected_pc_be != gateway_nodes[i].pc_ip_be) {
-            fprintf(stderr,
-                    "[ERROR] node table pc_ip=%s does not match node_id=%u driver mapping\n",
-                    gateway_nodes[i].pc_ip,
-                    (unsigned int)gateway_nodes[i].node_id);
-            return -1;
-        }
-        /* 开始和前面的节点逐个比对，检查重复项 */
-        for (j = 0; j < i; j++) {
-            if (gateway_nodes[j].node_id == gateway_nodes[i].node_id) {             //如果 node_id 重复，报错并返回
-                fprintf(stderr, "[ERROR] duplicate node_id in node table: %u\n",
-                        (unsigned int)gateway_nodes[i].node_id);
-                return -1;
-            }
-            if (gateway_nodes[j].board_ip_be == gateway_nodes[i].board_ip_be) {     //如果 board_ip 重复，报错并返回
-                fprintf(stderr, "[ERROR] duplicate board_ip in node table: %s\n",
-                        gateway_nodes[i].board_ip);
-                return -1;
-            }
-            if (gateway_nodes[j].pc_ip_be == gateway_nodes[i].pc_ip_be) {           //如果 pc_ip 重复，报错并返回
-                fprintf(stderr, "[ERROR] duplicate pc_ip in node table: %s\n",
-                        gateway_nodes[i].pc_ip);
-                return -1;
-            }
         }
     }
-    gateway_nodes_ready = 1;        //所有节点都校验通过后，把 gateway_nodes_ready 置 1
+
+    gateway_nodes_ready = 1;
     return 0;
 }
 
@@ -157,7 +89,7 @@ static gateway_node_t *find_self_node(uint32_t local_ip_be)
 }
 
 /* 读取指定网络接口(eth0)的 IPv4 地址 */
-static int get_iface_ipv4(const char *ifname, struct in_addr *addr)
+int get_iface_ipv4(const char *ifname, struct in_addr *addr)
 {
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     struct ifreq ifr;
