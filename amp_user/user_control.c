@@ -1,36 +1,37 @@
 /**************************/
 /*   控制面收发与透传模块   */
 /**************************/
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <stddef.h>
-#include <stdbool.h>
-#include <pthread.h>
-#include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <arpa/inet.h>
-#include <linux/if.h>
+#include <stdio.h>                 /* fprintf / perror */
+#include <string.h>                /* memset / memcpy */
+#include <unistd.h>                /* close / sleep */
+#include <time.h>                   /* time / localtime_r（开机时钟下发用） */
+#include <errno.h>                 /* errno / EINTR */
+#include <stddef.h>                /* offsetof / size_t */
+#include <stdbool.h>               /* bool / true / false */
+#include <pthread.h>               /* POSIX 线程与互斥锁 */
+#include <sys/socket.h>            /* socket / bind / sendto / recvfrom */
+#include <sys/ioctl.h>             /* ioctl */
+#include <arpa/inet.h>             /* inet_ntoa / htons */
+#include <linux/if.h>              /* IFNAMSIZ / struct ifreq */
 
-#include "user_declaration.h"
+#include "user_declaration.h"      /* 全局变量声明与函数声明 */
 
-#define CTRL_FRAME_TYPE_ACK          0x30
-#define CTRL_FRAME_TYPE_NACK         0x40
-#define CTRL_FRAME_TYPE_VERSION      0x10
-#define CTRL_FRAME_TYPE_WORK_PARAM   0x20
+/* ========= 控制帧类型常量（协议定义） ========= */
+#define CTRL_FRAME_TYPE_ACK          0x30    /* 应答帧类型 */
+#define CTRL_FRAME_TYPE_NACK         0x40    /* 否定应答帧类型 */
+#define CTRL_FRAME_TYPE_VERSION      0x10    /* 版本上报帧类型 */
+#define CTRL_FRAME_TYPE_WORK_PARAM   0x20    /* 工作参数上报帧类型 */
 
-#define CTRL_FRAME_CNT_ACK           0x00
-#define CTRL_FRAME_CNT_NACK          0x00
-#define CTRL_FRAME_CNT_VERSION       0x05
-#define CTRL_FRAME_CNT_WORK_PARAM    0x8C
+/* 注：新协议已删除头区域第二字节的"计数"字段，改为"保留(0x00)"。
+ * 因此不再定义 CTRL_FRAME_CNT_* 计数值；帧类型仅凭 pkt[10] 的"类型"字节区分。 */
 
+/* 控制帧类型枚举：用于 classify_control_frame 的返回值 */
 typedef enum {
-    CTRL_FRAME_UNKNOWN = 0,
-    CTRL_FRAME_ACK,
-    CTRL_FRAME_NACK,
-    CTRL_FRAME_VERSION_REPORT,
-    CTRL_FRAME_WORK_PARAM_REPORT,
+    CTRL_FRAME_UNKNOWN = 0,         /* 未知/非法帧 */
+    CTRL_FRAME_ACK,                 /* 应答帧 */
+    CTRL_FRAME_NACK,                /* 否定应答帧 */
+    CTRL_FRAME_VERSION_REPORT,      /* 版本上报帧 */
+    CTRL_FRAME_WORK_PARAM_REPORT,   /* 工作参数上报帧 */
 } ctrl_frame_kind_t;
 
 #pragma pack(push, 1)
@@ -41,7 +42,7 @@ typedef struct {
     uint16_t SourceID;
     uint16_t synchronizing;
     uint8_t frameType;
-    uint8_t frameCnt;
+    uint8_t frameReserve;               /* 头区域第二字节：新协议为"保留"，原"计数"字段已删除 */
     uint8_t WEBVersion;
     uint8_t MCVersion;
     uint8_t NETVersion;
@@ -57,7 +58,7 @@ typedef struct {
     uint16_t SourceID;
     uint16_t synchronizing;
     uint8_t frameType;
-    uint8_t frameCnt;
+    uint8_t frameReserve;               /* 头区域第二字节：新协议为"保留"，原"计数"字段已删除 */
     uint8_t SiteAttribute;
     uint8_t NodeName;
     uint8_t NodeID;
@@ -195,11 +196,12 @@ typedef struct {
     uint8_t raw[sizeof(ctrl_work_param_report_t)];
 } ctrl_work_param_cache_t;
 
-static int control_sockfd = -1;
-static pthread_mutex_t control_cache_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct sockaddr_in control_report_peer;
-static ctrl_version_cache_t last_version_report;
-static ctrl_work_param_cache_t last_work_param_report;
+/* ========= 控制面全局状态 ========= */
+static int control_sockfd = -1;                                 /* UDP socket 文件描述符 */
+static pthread_mutex_t control_cache_lock = PTHREAD_MUTEX_INITIALIZER;  /* 保护缓存的互斥锁（静态初始化） */
+static struct sockaddr_in control_report_peer;                  /* 控制上报目标地址（本机 IP：3419） */
+static ctrl_version_cache_t last_version_report;                /* 最近一次版本上报帧缓存 */
+static ctrl_work_param_cache_t last_work_param_report;          /* 最近一次工作参数上报帧缓存 */
 
 /***********************************
  * 从控制帧字节流里读 16 位大端字段 *
@@ -222,8 +224,8 @@ static uint32_t ctrl_read_be32(const uint8_t *p)
 
 /***********************************
  *          异或校验计算函数         *
- * 协议A 第67行：校验和 = 头区域(类型+计数) 与 数据域 每个字节按位异或。
- * 本帧布局：pkt[10]=类型、pkt[11]=计数、pkt[12..] = 数据域、pkt[len-1]=校验和。
+ * 协议：校验和 = 头区域(类型+保留) 与 数据域 每个字节按位异或。
+ * 本帧布局：pkt[10]=类型、pkt[11]=保留、pkt[12..] = 数据域、pkt[len-1]=校验和。
  * 故从 pkt[10] 异或至 pkt[len-2]，结果应与 pkt[len-1] 相等。
  **********************************/
 static unsigned char ctrl_xor_checksum(const uint8_t *pkt, size_t len)
@@ -239,7 +241,7 @@ static unsigned char ctrl_xor_checksum(const uint8_t *pkt, size_t len)
 
 
 /***********************************
- * 计数校验结果与数据帧长度是否合理 *
+ *   校验和与数据帧长度是否合理     *
  **********************************/
 static bool ctrl_frame_is_valid(const uint8_t *pkt, size_t len)
 {
@@ -275,13 +277,14 @@ static ctrl_frame_kind_t classify_control_frame(const uint8_t *pkt, size_t len)
     if (!pkt || len < 13)
         return CTRL_FRAME_UNKNOWN;
 
-    if (pkt[10] == CTRL_FRAME_TYPE_ACK && pkt[11] == CTRL_FRAME_CNT_ACK)
+    /* 新协议头区域第二字节为"保留"，不再携带计数值，故仅按"类型"字节(pkt[10])区分帧类型 */
+    if (pkt[10] == CTRL_FRAME_TYPE_ACK)
         return CTRL_FRAME_ACK;
-    if (pkt[10] == CTRL_FRAME_TYPE_NACK && pkt[11] == CTRL_FRAME_CNT_NACK)
+    if (pkt[10] == CTRL_FRAME_TYPE_NACK)
         return CTRL_FRAME_NACK;
-    if (pkt[10] == CTRL_FRAME_TYPE_VERSION && pkt[11] == CTRL_FRAME_CNT_VERSION)
+    if (pkt[10] == CTRL_FRAME_TYPE_VERSION)
         return CTRL_FRAME_VERSION_REPORT;
-    if (pkt[10] == CTRL_FRAME_TYPE_WORK_PARAM && pkt[11] == CTRL_FRAME_CNT_WORK_PARAM)
+    if (pkt[10] == CTRL_FRAME_TYPE_WORK_PARAM)
         return CTRL_FRAME_WORK_PARAM_REPORT;
 
     return CTRL_FRAME_UNKNOWN;
@@ -310,7 +313,7 @@ static void parse_version_report(ctrl_version_report_t *frame, const uint8_t *pk
     CTRL_PARSE_BE16(SourceID);
     CTRL_PARSE_BE16(synchronizing);
     CTRL_PARSE_U8(frameType);
-    CTRL_PARSE_U8(frameCnt);
+    CTRL_PARSE_U8(frameReserve);
     CTRL_PARSE_U8(WEBVersion);
     CTRL_PARSE_U8(MCVersion);
     CTRL_PARSE_U8(NETVersion);
@@ -350,7 +353,7 @@ static void parse_work_param_report(ctrl_work_param_report_t *frame, const uint8
     CTRL_PARSE_BE16(SourceID);
     CTRL_PARSE_BE16(synchronizing);
     CTRL_PARSE_U8(frameType);
-    CTRL_PARSE_U8(frameCnt);
+    CTRL_PARSE_U8(frameReserve);
     CTRL_PARSE_U8(SiteAttribute);
     CTRL_PARSE_U8(NodeName);
     CTRL_PARSE_U8(NodeID);
@@ -560,30 +563,145 @@ static int write_ctrl_msg(const struct amp_ctrl_msg *msg, size_t msg_bytes)
 }
 
 /******************************************
+ *      开机自启动时钟下发（协议类型 0x19） *
+ ****************************************/
+
+/* 十进制转 BCD：例如 59 -> 0x59（协议时间字段均为 BCD 码） */
+static uint8_t dec_to_bcd(uint8_t dec)
+{
+    return (uint8_t)(((dec / 10) << 4) | (dec % 10));
+}
+
+/* 把 16 位字段以小端写入缓冲区（协议头字段按小端发送，与路由固件对齐） */
+static void ctrl_write_le16(uint8_t *p, uint16_t v)
+{
+    p[0] = (uint8_t)(v & 0xFF);
+    p[1] = (uint8_t)(v >> 8);
+}
+
+/***********************************
+ *   组 0x19 时钟下发帧（主控->路由）  *
+ * 帧布局（大端 16 位头字段）：         *
+ *   长度2(含长度字段自身=20)           *
+ *   保留2(0x0000)                      *
+ *   目的ID 0x0C00 / 源ID 0x0A00        *
+ *   同步序列 0xFFF5                    *
+ *   类型 0x19 / 保留 0x00              *
+ *   年/月/星期/日/时/分/秒（BCD 各1B）  *
+ *   校验和1（头区域+数据域逐字节异或）   *
+ * 返回 0 成功，<0 失败。               *
+ **********************************/
+static int build_clock_frame(uint8_t *buf, size_t *len)
+{
+    struct tm tmv;
+    time_t now;
+    int wday_iso;       /* ISO 星期：周一=1 .. 周日=7 */
+
+    if (!buf || !len)
+        return -1;
+
+    now = time(NULL);
+    if (localtime_r(&now, &tmv) == NULL)
+        return -1;
+
+    /* struct tm 的 tm_wday：0=周日..6=周六；转 ISO：1=周一..7=周日 */
+    wday_iso = (tmv.tm_wday == 0) ? 7 : tmv.tm_wday;
+
+    memset(buf, 0, 20);
+
+    ctrl_write_le16(buf + 0, 20);                  /* 长度（含自身 = 20），小端 */
+    ctrl_write_le16(buf + 2, 0x0000);             /* 保留，小端 */
+    ctrl_write_le16(buf + 4, SRIO_ID_ROUTER);     /* 目的 ID = 路由，小端 */
+    ctrl_write_le16(buf + 6, SRIO_ID_MASTER);     /* 源 ID = 主控，小端 */
+    ctrl_write_le16(buf + 8, CLOCK_SYNC_MAGIC);   /* 同步序列 0xFFF5，小端 */
+    buf[10] = CTRL_FRAME_TYPE_CLOCK;              /* 类型 0x19 */
+    buf[11] = 0x00;                               /* 头区域第二字节：保留 */
+
+    /* 时间字段：均为 BCD（年取两位，如 2026 -> 0x26） */
+    buf[12] = dec_to_bcd((uint8_t)((tmv.tm_year + 1900) % 100));  /* 年 */
+    buf[13] = dec_to_bcd((uint8_t)(tmv.tm_mon + 1));              /* 月 1~12 */
+    buf[14] = dec_to_bcd((uint8_t)wday_iso);                     /* 星期 1~7 */
+    buf[15] = dec_to_bcd((uint8_t)(tmv.tm_mday));                /* 日 1~31 */
+    buf[16] = dec_to_bcd((uint8_t)(tmv.tm_hour));                /* 时 0~23 */
+    buf[17] = dec_to_bcd((uint8_t)(tmv.tm_min));                 /* 分 0~59 */
+    buf[18] = dec_to_bcd((uint8_t)(tmv.tm_sec));                 /* 秒 0~59 */
+
+    /* 校验和 = 头区域(类型+保留) 与 数据域 逐字节异或，复用现有校验函数 */
+    buf[19] = ctrl_xor_checksum(buf, 20);
+
+    *len = 20;
+    return 0;
+}
+
+/***********************************
+ *  开机一次性下发 0x19 时钟帧给路由   *
+ *  带初始延时 + 有限重试；失败不致命  *
+ **********************************/
+int clock_send_on_boot(void)
+{
+    int attempt;
+    uint8_t frame[20];
+    size_t flen;
+    struct amp_ctrl_msg msg;
+    size_t msg_bytes;
+
+    if (build_clock_frame(frame, &flen) != 0) {
+        fprintf(stderr, "[ERROR] build clock frame(0x19) failed\n");
+        return -1;
+    }
+
+    /* 初始延时：给路由固件留出启动时间，避免 TX 单槽尚未释放导致 -EBUSY */
+    sleep(CLOCK_BOOT_DELAY_SEC);
+
+    for (attempt = 0; attempt < CLOCK_BOOT_RETRY; attempt++) {
+        memset(&msg, 0, sizeof(msg));
+        msg.len = (uint32_t)flen;
+        msg.data_type = 1;
+        memcpy(msg.data, frame, flen);
+        msg_bytes = offsetof(struct amp_ctrl_msg, data) + flen;
+
+        if (write_ctrl_msg(&msg, msg_bytes) == 0) {
+            fprintf(stderr, "[INFO] clock frame(0x19) sent to router on boot\n");
+            return 0;
+        }
+
+        fprintf(stderr, "[WARN] clock frame(0x19) send failed, retry %d/%d\n",
+                attempt + 1, CLOCK_BOOT_RETRY);
+        sleep(CLOCK_BOOT_RETRY_GAP_SEC);
+    }
+
+    fprintf(stderr, "[ERROR] clock frame(0x19) send gave up after %d retries\n",
+            CLOCK_BOOT_RETRY);
+    return -1;
+}
+
+/******************************************
  *      创建socket并绑定本地 UDP 3409     *
  ****************************************/
 int control_socket_init(void)
 {
-    int on = 1;
-    struct sockaddr_in local_addr;
+    int on = 1;                                     /* setsockopt 的开关值 */
+    struct sockaddr_in local_addr;                  /* 本地绑定地址 */
 
     if (control_sockfd >= 0)
-        return 0;
+        return 0;                                   /* 已经初始化过 */
 
+    /* 创建 UDP socket */
     control_sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (control_sockfd < 0) {
         perror("socket(control)");
         return -1;
     }
 
+    /* 允许地址复用：防止重启时端口仍处于 TIME_WAIT 导致 bind 失败 */
     if (setsockopt(control_sockfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
         perror("setsockopt(SO_REUSEADDR)");
 
+    /* 绑定到所有本地 IP 的 3409 端口 */
     memset(&local_addr, 0, sizeof(local_addr));
     local_addr.sin_family = AF_INET;
-    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	//INADDR_ANY表示服务器可以接收来自任何网络接口的连接请求也就是说，服务器不绑定到特定的 IP 地址，而是监听所有可用的本地 IP 地址。
-    local_addr.sin_port = htons(CONTROL_PORT);
+    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);     /* INADDR_ANY = 监听所有网口 */
+    local_addr.sin_port = htons(CONTROL_PORT);           /* 3409 */
 
     if (bind(control_sockfd, (struct sockaddr *)&local_addr, sizeof(local_addr)) < 0) {
         perror("bind(control)");
@@ -592,6 +710,7 @@ int control_socket_init(void)
         return -1;
     }
 
+    /* 初始化上报目标地址（本机 IP + 3419 端口） */
     if (init_control_report_peer() != 0) {
         close(control_sockfd);
         control_sockfd = -1;
