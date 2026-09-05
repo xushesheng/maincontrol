@@ -1,27 +1,27 @@
 /**************************/
 /*    业务数据收发线程     */
 /**************************/
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <poll.h>
-#include <stddef.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <linux/if.h>
-#include <linux/if_tun.h>
-#include <netinet/ip.h>
-#include <netinet/ip_icmp.h>
-#include <netinet/udp.h>
+#include <stdio.h>                 /* fprintf / perror */
+#include <string.h>                /* memset / memcpy / memcmp */
+#include <unistd.h>                /* read / write / usleep / close */
+#include <fcntl.h>                 /* fcntl / O_NONBLOCK */
+#include <errno.h>                 /* errno / EAGAIN / EINTR */
+#include <poll.h>                  /* poll() 多路复用 */
+#include <stddef.h>                /* offsetof / size_t */
+#include <sys/ioctl.h>             /* ioctl() */
+#include <sys/socket.h>            /* socket 地址结构 */
+#include <linux/if.h>              /* IFNAMSIZ / struct ifreq */
+#include <linux/if_tun.h>          /* TUN 设备 ioctl（TUNSETIFF / IFF_TUN） */
+#include <netinet/ip.h>            /* struct iphdr（IP 头结构） */
+#include <netinet/ip_icmp.h>       /* struct icmphdr（ICMP 头结构） */
+#include <netinet/udp.h>           /* struct udphdr（UDP 头结构） */
 
-#include "user_declaration.h"
+#include "user_declaration.h"      /* 全局变量、类型、函数声明 */
 
 amp_tx_runtime_t amp_tx_runtime = {
-    .lock = PTHREAD_MUTEX_INITIALIZER,
-    .not_empty = PTHREAD_COND_INITIALIZER,
-    .data_not_full = PTHREAD_COND_INITIALIZER,
+    .lock = PTHREAD_MUTEX_INITIALIZER,          /* 静态初始化互斥锁 */
+    .not_empty = PTHREAD_COND_INITIALIZER,      /* 静态初始化"非空"条件变量 */
+    .data_not_full = PTHREAD_COND_INITIALIZER,  /* 静态初始化"非满"条件变量 */
 };
 
 /***********************/
@@ -72,42 +72,44 @@ int tun_write_packet(int fd, const uint8_t *pkt, size_t len)
 /* 把一个文件描述符 fd 设置成非阻塞模式 */
 static int set_nonblock(int fd)
 {
-    int flags = fcntl(fd, F_GETFL, 0);                  //打开文件标识符
+    int flags = fcntl(fd, F_GETFL, 0);                  /* 获取当前文件状态标志 */
     if (flags < 0)
         return -1;
-    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)	    //在原有标志上，额外打开 O_NONBLOCK 位设置为非阻塞
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)    /* 在原有标志上，额外打开 O_NONBLOCK 位设置为非阻塞 */
         return -1;
     return 0;
 }
 
-/* 业务发送队列的底层入队 */
+/* 业务发送队列的底层入队函数（调用者必须持有 amp_tx_runtime.lock） */
 static int amp_tx_enqueue_locked(amp_tx_slot_t *queue,
-                                 unsigned int depth,
-                                 unsigned int *tail,
-                                 unsigned int *count,
-                                 pthread_cond_t *not_full,
-                                 unsigned long *waits,
-                                 const char *queue_name,
+                                 unsigned int depth,         /* 队列深度 */
+                                 unsigned int *tail,         /* 队尾索引指针 */
+                                 unsigned int *count,        /* 当前计数指针 */
+                                 pthread_cond_t *not_full,   /* "队列非满"条件变量 */
+                                 unsigned long *waits,       /* 等待次数计数器 */
+                                 const char *queue_name,     /* 队列名称（日志用） */
                                  const struct amp_net_msg *msg,
                                  size_t msg_bytes)
 {
+    /* 队列满：在条件变量上等待，直到发送线程取走数据 */
     while (*count == depth) {
         int rc;
 
-        (*waits)++;
-        if ((*waits % 64UL) == 1UL)
+        (*waits)++;                                 /* 等待计数加1 */
+        if ((*waits % 64UL) == 1UL)                 /* 每 64 次打印一次告警（避免刷屏） */
             fprintf(stderr, "[WARN] %s queue full, waiting...\n", queue_name);
 
-        rc = pthread_cond_wait(not_full, &amp_tx_runtime.lock);
+        rc = pthread_cond_wait(not_full, &amp_tx_runtime.lock);  /* 释放锁并等待，被唤醒时自动重新获取锁 */
         if (rc != 0)
             return -1;
     }
 
-    queue[*tail].msg = *msg;
-    queue[*tail].msg_bytes = msg_bytes;
-    *tail = (*tail + 1U) % depth;
-    (*count)++;
-    pthread_cond_signal(&amp_tx_runtime.not_empty);
+    /* 队列有空位：将消息写入队尾 */
+    queue[*tail].msg = *msg;                        /* 拷贝消息内容 */
+    queue[*tail].msg_bytes = msg_bytes;             /* 记录实际字节数 */
+    *tail = (*tail + 1U) % depth;                   /* 环形推进队尾索引 */
+    (*count)++;                                     /* 计数加1 */
+    pthread_cond_signal(&amp_tx_runtime.not_empty);    /* 唤醒发送线程（队列非空） */
     return 0;
 }
 
@@ -157,13 +159,15 @@ static int amp_write_msg_direct(const struct amp_net_msg *msg, size_t msg_bytes)
 }
 
 /* 统一业务发送线程，避免多个线程同时写业务设备 */
+/* 统一业务发送线程：串行化 write(/dev/amp_ipi)，避免多个线程并发踩 TX 单槽 */
 void *amp_tx_thread(void *arg)
 {
-    amp_tx_slot_t slot;
+    amp_tx_slot_t slot;     /* 从队列中取出的发送槽位 */
 
     (void)arg;
 
     while (g_running) {
+        /* 获取队列锁 */
         int rc = pthread_mutex_lock(&amp_tx_runtime.lock);
 
         if (rc != 0) {
@@ -171,8 +175,9 @@ void *amp_tx_thread(void *arg)
             break;
         }
 
+        /* 队列为空：在条件变量上等待（释放锁，被唤醒时重获锁） */
         while (amp_tx_runtime.data_count == 0) {
-            if (!g_running) {
+            if (!g_running) {                           /* 退出标志已设置 */
                 (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
                 return NULL;
             }
@@ -184,15 +189,18 @@ void *amp_tx_thread(void *arg)
             }
         }
 
+        /* 从队头取出一条消息 */
         slot = amp_tx_runtime.data_q[amp_tx_runtime.data_head];
-        amp_tx_runtime.data_head = (amp_tx_runtime.data_head + 1U) % AMP_TX_QUEUE_DEPTH;
-        amp_tx_runtime.data_count--;
-        pthread_cond_signal(&amp_tx_runtime.data_not_full);
+        amp_tx_runtime.data_head = (amp_tx_runtime.data_head + 1U) % AMP_TX_QUEUE_DEPTH;  /* 推进队头 */
+        amp_tx_runtime.data_count--;                    /* 计数减1 */
+        pthread_cond_signal(&amp_tx_runtime.data_not_full);   /* 唤醒可能等待的生产者 */
 
-        (void)pthread_mutex_unlock(&amp_tx_runtime.lock);
+        (void)pthread_mutex_unlock(&amp_tx_runtime.lock);     /* 释放锁：write 是耗时操作，不在锁内进行 */
 
+        /* 实际写入 /dev/amp_ipi */
         (void)amp_write_msg_direct(&slot.msg, slot.msg_bytes);
 
+        /* 写完后留一个保护间隔，降低连续两次 write 之间 TX 单槽被覆盖的概率 */
         if (AMP_TX_GUARD_US > 0)
             usleep(AMP_TX_GUARD_US);
     }
@@ -335,7 +343,7 @@ static int is_ping_or(const uint8_t *pkt, size_t len)
 }
 
 /* 对UDP业务做端口分流：
- * 3408 进入业务面；
+ * g_business_port（默认 3408，可由网管下发配置帧修改）进入业务面；
  * 3409 保留给独立控制面，不进入TUN业务通道；
  * 其他UDP流量当前不进入AMP业务面。 */
 static int classify_udp_business_port(const uint8_t *pkt, size_t len)
@@ -345,6 +353,7 @@ static int classify_udp_business_port(const uint8_t *pkt, size_t len)
     const struct udphdr *udp;
     uint16_t src_port;
     uint16_t dst_port;
+    uint16_t biz_port;
 
     if (len < sizeof(struct iphdr))
         return 0;
@@ -363,7 +372,11 @@ static int classify_udp_business_port(const uint8_t *pkt, size_t len)
 
     if (src_port == CONTROL_PORT || dst_port == CONTROL_PORT)
         return -1;
-    if (src_port == BUSINESS_PORT || dst_port == BUSINESS_PORT)
+
+    /* 先取一次快照再比较：配置线程可能在两次比较之间改写业务端口，
+     * 取快照可保证同一个包的前后判断基于同一个端口值，不会自相矛盾 */
+    biz_port = g_business_port;
+    if (src_port == biz_port || dst_port == biz_port)
         return 1;
     return -1;
 }

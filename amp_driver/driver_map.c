@@ -3,7 +3,7 @@
 /*************************/
 #include <linux/module.h>             /* 内核模块框架 */
 #include <linux/platform_device.h>    /* 平台设备驱动 */
-#include <linux/io.h>                 /* IO 内存映射（memremap/memunmap） */
+#include <linux/io.h>                 /* IO 内存映射（ioremap_nocache/iounmap） */
 #include <linux/wait.h>               /* 等待队列初始化 */
 #include <linux/atomic.h>             /* 原子变量初始化 */
 #include <linux/string.h>             /* memset */
@@ -55,7 +55,7 @@ void __iomem *rx_ctrl_type;         /* 接收控制：数据类型寄存器 */
 void __iomem *rx_ctrl_data_addr;    /* 接收控制：数据区首地址 */
 void __iomem *rx_ctrl_reg;          /* CPU1->CPU0 数据模式寄存器 */
 
-/* 共享内存/寄存器映射表：物理地址 -> 全局指针，统一 memremap/memunmap */
+/* 共享内存/寄存器映射表：物理地址 -> 全局指针，统一 ioremap_nocache/iounmap */
 struct amp_io_entry {
     void __iomem **slot;        /* 指向全局 void __iomem * 指针的二级指针（用于赋值） */
     resource_size_t phys;       /* 物理地址 */
@@ -90,7 +90,7 @@ static struct amp_io_entry amp_io_map[] = {
 /* 映射验证函数：检查业务/控制两套共享内存和寄存器是否都映射成功 */
 bool driver_amp_resources_ready(void)
 {
-    /* 逐一检查所有 18 个 IO 指针是否非空（非 NULL 即表示 memremap 成功） */
+    /* 逐一检查所有 18 个 IO 指针是否非空（非 NULL 即表示 ioremap_nocache 成功） */
     return tx_ip_addr && tx_node_id && tx_len && tx_type && tx_data_addr &&
            tx_ctrl_len && tx_ctrl_type && tx_ctrl_data_addr &&
            ctrl_reg && rx_ip_addr && rx_node_id && rx_len && rx_type &&
@@ -106,9 +106,9 @@ int driver_amp_map_resources(void)
     size_t i;                                       /* 循环索引 */
     size_t n = sizeof(amp_io_map) / sizeof(amp_io_map[0]);   /* 计算映射表条目数 */
 
-    /* 批量 memremap：禁用 CPU 缓存，保证每次读写直达硬件 */
+    /* 批量 ioremap_nocache：禁用 CPU 缓存，保证每次读写直达硬件 */
     for (i = 0; i < n; i++)
-        *amp_io_map[i].slot = memremap(amp_io_map[i].phys, amp_io_map[i].size,MEMREMAP_WB);    /* 映射为可写缓存模式 */
+        *amp_io_map[i].slot = ioremap_nocache(amp_io_map[i].phys, amp_io_map[i].size);
 
     /* 验证所有指针都映射成功 */
     if (!driver_amp_resources_ready())
@@ -151,10 +151,10 @@ void driver_amp_unmap_resources(void)
     size_t i;
     size_t n = sizeof(amp_io_map) / sizeof(amp_io_map[0]);   /* 条目数 */
 
-    /* 批量 memunmap：只释放非空的映射，释放后置 NULL 防止野指针 */
+    /* 批量 iounmap：只释放非空的映射，释放后置 NULL 防止野指针 */
     for (i = 0; i < n; i++) {
         if (*amp_io_map[i].slot) {                  /* 指针非空才释放 */
-            memunmap(*amp_io_map[i].slot);           /* 取消 IO 内存映射 */
+            iounmap(*amp_io_map[i].slot);           /* 取消 IO 内存映射 */
             *amp_io_map[i].slot = NULL;             /* 置空，防止后续误用 */
         }
     }

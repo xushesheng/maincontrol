@@ -12,9 +12,17 @@
 #define MAX_PAYLOAD_SIZE 4096              /* 最大载荷大小（与驱动侧一致） */
 
 /* ========= UDP 端口号定义 ========= */
-#define BUSINESS_PORT 3408                  /* 业务 UDP 端口：数据走此端口进入 AMP 通道 */
+#define BUSINESS_PORT 3408                  /* 业务 UDP 端口：数据走此端口进入 AMP 通道（默认值，配置文件缺失或非法时回落至此） */
 #define CONTROL_PORT 3409                   /* 控制 UDP 端口：网管指令走此端口 */
 #define CONTROL_REPORT_PORT 3419            /* 控制回执端口：CPU1 上报转发至此端口 */
+
+/* ========= 业务端口运行时配置（网管下发，主控本地消费，不透传 CPU1） ========= */
+#define CTRL_FRAME_TYPE_BUSINESS_PORT 0x21  /* 网管下发业务端口配置帧的类型码 */
+#define BUSINESS_PORT_FRAME_LEN 16          /* 端口配置帧总长：12 字节帧头 + 3 字节 BCD + 1 字节校验和 */
+#define BUSINESS_PORT_BCD_BYTES 3           /* 端口 BCD 编码字节数：3 字节 = 6 位十进制 */
+#define AMP_PORT_CONF_FILE "/etc/amp_business_port.conf"  /* 业务端口持久化配置文件路径 */
+#define BUSINESS_PORT_MIN 1024              /* 合法业务端口下限：避开特权端口与常见服务端口 */
+#define BUSINESS_PORT_MAX 65535             /* 合法业务端口上限 */
 
 /* 聚合帧最大长度（只对“批帧 AMPB”限制 640，单包直发不受此限制） */
 #define AMP_BATCH_MAX_BYTES 640

@@ -16,6 +16,15 @@ extern int ctrl_fd;             /* /dev/amp_ctrl 文件描述符（控制数据�
 extern int tun_fd;              /* TUN 虚拟网卡 rf0 文件描述符 */
 extern volatile int g_running;  /* 全局运行标志：0 表示退出，所有线程检查此标志 */
 
+/* ========= 业务端口运行时配置 ========= */
+/* 当前生效的业务 UDP 端口，默认取 BUSINESS_PORT。
+ * 写方：control_rx_to_amp_thread 收到网管 0x21 配置帧后改写；
+ * 读方：tun_to_amp_thread 的端口过滤判断。单写单读，故仅用 volatile，不加锁。 */
+extern volatile uint16_t g_business_port;
+
+int portcfg_load(void);                     /* 启动时从配置文件载入端口；文件缺失或非法时保持默认值并返回 -1 */
+int portcfg_apply_and_save(uint16_t port);  /* 校验并持久化端口；成功返回 0，失败返回 -1 且不改写当前生效值 */
+
 /* ========= 发送队列相关类型 ========= */
 typedef struct {
     struct amp_net_msg msg;     /* 待发送的业务消息 */

@@ -10,7 +10,7 @@
 #include <linux/fs.h>                   /* 文件操作结构体 file_operations */
 #include <linux/types.h>                /* 基础类型定义 */
 #include <linux/atomic.h>               /* 原子变量（atomic_t） */
-#include <linux/io.h>                   /* IO 内存读写（readb/writeb/writel/memremap） */
+#include <linux/io.h>                   /* IO 内存读写（readb/writeb/writel/ioremap_nocache） */
 #include <linux/spinlock.h>             /* 自旋锁（spinlock_t） */
 #include <linux/bitops.h>               /* 位操作辅助宏 */
 
@@ -153,8 +153,8 @@ ssize_t amp_read(struct file *file, char __user *buf, size_t len, loff_t *ppos);
 ssize_t amp_ctrl_write(struct file *file, const char __user *buf, size_t len, loff_t *ppos);/* 用户态写入控制数据接口：copy_from_user -> process_ctrl_data */
 ssize_t amp_ctrl_read(struct file *file, char __user *buf, size_t len, loff_t *ppos);       /* 用户态读取控制数据接口：从控制 RX 环形队列 copy_to_user */
 
-int driver_amp_map_resources(void);         /* 共享内存映射函数：memremap 所有物理地址 -> 虚拟地址 */
-void driver_amp_unmap_resources(void);      /* 释放所有共享内存映射函数：memunmap 所有地址 */
+int driver_amp_map_resources(void);         /* 共享内存映射函数：ioremap_nocache 所有物理地址 -> 虚拟地址 */
+void driver_amp_unmap_resources(void);      /* 释放所有共享内存映射函数：iounmap 所有地址 */
 bool driver_amp_resources_ready(void);      /* 映射验证函数：检查所有地址是否都映射成功 */
 
 #endif

@@ -171,7 +171,6 @@ ssize_t amp_ctrl_write(struct file *file, const char __user *buf, size_t len, lo
 
     /* 向 CPU1 发送 SGI15 中断，通知其读取控制数据 */
     smp_kick_ipi(cpumask_of(3), AMP_SGI_TX);
-    amp_pr_info("IPI sent to CPU3 for control data\n");
 
     /* 返回实际写入字节数 */
     ret = offsetof(struct amp_ctrl_msg, data) + msg->len;
@@ -372,7 +371,7 @@ static int zynq_amp_probe(struct platform_device *pdev)
 {
     int ret;    /* 各步骤返回值，0 表示成功 */
 
-    /* 步骤1：memremap 所有共享内存和寄存器 */
+    /* 步骤1：ioremap_nocache 所有共享内存和寄存器 */
     ret = driver_amp_map_resources();
     if (ret)
         goto error;
@@ -433,7 +432,7 @@ static int zynq_amp_remove(struct platform_device *pdev)
     mutex_lock(&amp_ctrl_read_lock); /* 等待最后一次控制 read 完成 */
     mutex_unlock(&amp_ctrl_read_lock);
 
-    /* 5. 最后释放所有 memremap 映射 */
+    /* 5. 最后释放所有 ioremap_nocache 映射 */
     driver_amp_unmap_resources();
     return 0;
 }

@@ -231,7 +231,6 @@ int process_udp_data(struct amp_net_msg *msg)
     /*
      * 方案 A：写 TX 单槽前，等待 CPU1 把上一帧读走并清掉 ctrl_reg。
      * 若超时说明 CPU1 侧处理过慢，本次写入失败，避免覆盖上一帧。
-     * 当前暂时跳过等待（ret=0），直接覆盖写入。
      */
     ret = wait_for_tx_slot_idle();
     if (ret)
@@ -242,7 +241,7 @@ int process_udp_data(struct amp_net_msg *msg)
         memcpy_toio(tx_data_addr, msg->data, msg->len);
 
     /*
-     * tx_data_addr 由 memremap() 映射，已是 non-cacheable，
+     * tx_data_addr 由 ioremap_nocache() 映射，已是 non-cacheable，
      * 不需要 dsb + __cpuc_flush_dcache_area()。wmb() 保证后续 writel
      * 元数据在数据 memcpy 完成之后、置位 ctrl_reg 之前下发。
      */
@@ -285,7 +284,7 @@ int process_ctrl_data(struct amp_ctrl_msg *msg)
         return -EINVAL;
     }
 
-    /* 控制面同样复用 TX 单槽，写前也要等 CPU1 释放（当前跳过等待） */
+    /* 控制面同样复用 TX 单槽，写前也要等 CPU1 释放 */
     ret = wait_for_tx_slot_idle();
     if (ret)
         return ret;
@@ -294,7 +293,7 @@ int process_ctrl_data(struct amp_ctrl_msg *msg)
     if (msg->len > 0)
         memcpy_toio(tx_ctrl_data_addr, msg->data, msg->len);
 
-    /* 控制区同样由 memremap() 映射，non-cacheable，
+    /* 控制区同样由 ioremap_nocache() 映射，non-cacheable，
      * 只需 wmb() 保证 memcpy/writel 顺序。 */
     wmb();
 
@@ -327,6 +326,9 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
 
     (void)ipinr;        /* 抑制未使用警告 */
     (void)dev_id;
+    
+    /* 中断接收检查：验证驱动程序能否响应到对方中断 */
+    amp_pr_info(" AMP RX: sgi=%d \n",AMP_SGI_RX); //接收到的IPI中断14
 
     /* 安全检查：所有 RX 相关 IO 指针必须已映射 */
     if (!rx_len || !rx_node_id || !rx_ip_addr || !rx_data_addr ||
@@ -337,9 +339,7 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
 
     rx_mode8 = readb(rx_ctrl_reg);       /* 先读 0x39005000：如果 =0x01 就搬业务上报；=0x02 就搬控制上报；=0 兜底按业务处理 */
     rmb();                               /* 读屏障：确保 readb 完成后才能信赖 rx_mode8 */
-    rx_mode32 = readl(rx_ctrl_reg);      /* 调试用：按 32 位再读一次 */
-    rmb();
-    amp_pr_info("AMP RX: sgi=%d rx_ctrl_reg readb=0x%02x readl=0x%08x\n",ipinr, rx_mode8, rx_mode32);
+    amp_pr_info("AMP RX: rx_ctrl_reg readb=0x%02x\n", rx_mode8);
 
     if (rx_mode8 & 0x01) {
         /* 业务 RX：CPU1 把业务数据放在 0x39001000 业务 RX 区，bit0=1 表示业务数据待读 */

@@ -54,6 +54,9 @@ int main(void)
     if (tun_fd < 0)
         goto err_ctrl_fd;   /* 回滚：跳转到关闭 ctrl_fd 和 amp_fd */
 
+    /* 步骤3.5：载入业务端口配置（网管可下发修改；文件缺失或非法时回落默认 3408，不致命） */
+    (void)portcfg_load();
+
     /* 步骤4：配置网关规则（路由、proxy ARP、sysctl） */
     setup_gateway_rules();
 

@@ -100,6 +100,10 @@ typedef struct {
     uint16_t Power2Temp;
     uint8_t Power2Volt;
     uint8_t Power2Elect;
+    uint8_t PowerModuleInfo;       /* 电源模块状态信息（BCD，0x01 正常/0x02 故障超温） */
+    uint16_t PowerModuleTemp;      /* 电源模块运行温度信息（2 字节，同上温度格式） */
+    uint8_t PowerModuleVolt;       /* 电源模块运行电压信息（BCD） */
+    uint8_t PowerModuleElect;      /* 电源模块运行电流信息（BCD，单位 mA） */
     uint8_t BandwidthSet;
     uint8_t PowerSet;
     uint8_t Encryption;
@@ -116,68 +120,7 @@ typedef struct {
     uint8_t ComDataSum;
     uint8_t ComDataBER;
     uint8_t ComDataPLP;
-    uint8_t NodeConnect1;
-    uint8_t NodeConnect2;
-    uint8_t NodeConnect3;
-    uint8_t NodeConnect4;
-    uint8_t NodeConnect5;
-    uint8_t NodeConnect6;
-    uint8_t NodeConnect7;
-    uint8_t NodeConnect8;
-    uint8_t NodeConnect9;
-    uint8_t NodeConnect10;
-    uint8_t NodeConnect11;
-    uint8_t NodeConnect12;
-    uint8_t NodeConnect13;
-    uint8_t NodeConnect14;
-    uint8_t NodeConnect15;
-    uint8_t NodeConnect16;
-    uint8_t NodeConnect17;
-    uint8_t NodeConnect18;
-    uint8_t NodeConnect19;
-    uint8_t NodeConnect20;
-    uint8_t NodeConnect21;
-    uint8_t NodeConnect22;
-    uint8_t NodeConnect23;
-    uint8_t NodeConnect24;
-    uint8_t NodeConnect25;
-    uint8_t NodeConnect26;
-    uint8_t NodeConnect27;
-    uint8_t NodeConnect28;
-    uint8_t NodeConnect29;
-    uint8_t NodeConnect30;
-    uint8_t NodeConnect31;
-    uint8_t NodeConnect32;
-    uint8_t NodeConnect33;
-    uint8_t NodeConnect34;
-    uint8_t NodeConnect35;
-    uint8_t NodeConnect36;
-    uint8_t NodeConnect37;
-    uint8_t NodeConnect38;
-    uint8_t NodeConnect39;
-    uint8_t NodeConnect40;
-    uint8_t NodeConnect41;
-    uint8_t NodeConnect42;
-    uint8_t NodeConnect43;
-    uint8_t NodeConnect44;
-    uint8_t NodeConnect45;
-    uint8_t NodeConnect46;
-    uint8_t NodeConnect47;
-    uint8_t NodeConnect48;
-    uint8_t NodeConnect49;
-    uint8_t NodeConnect50;
-    uint8_t NodeConnect51;
-    uint8_t NodeConnect52;
-    uint8_t NodeConnect53;
-    uint8_t NodeConnect54;
-    uint8_t NodeConnect55;
-    uint8_t NodeConnect56;
-    uint8_t NodeConnect57;
-    uint8_t NodeConnect58;
-    uint8_t NodeConnect59;
-    uint8_t NodeConnect60;
-    uint8_t NodeConnect61;
-    uint8_t NodeConnect62;
+    uint8_t NodeConnect[128];   /* 节点连接关系：32 节点 × 4B/节点，每行 32bit 表示该节点与 1~32 号节点的连接（含自连接）；bit=1 连接、bit=0 断开，字节内 MSB 在前 */
     uint8_t frameEnd;
 } ctrl_work_param_report_t;
 #pragma pack(pop)
@@ -204,22 +147,24 @@ static ctrl_version_cache_t last_version_report;                /* 最近一次�
 static ctrl_work_param_cache_t last_work_param_report;          /* 最近一次工作参数上报帧缓存 */
 
 /***********************************
- * 从控制帧字节流里读 16 位大端字段 *
+ * 从控制帧字节流里读 16 位小端字段 *
+ * 注：控制帧头区域统一小端（与 TX 侧 ctrl_write_le16 一致）
  **********************************/
-static uint16_t ctrl_read_be16(const uint8_t *p)
+static uint16_t ctrl_read_le16(const uint8_t *p)
 {
-    return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
+    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
 }
 
 /***********************************
- * 从控制帧字节流里读 32 位大端字段 *
+ * 从控制帧字节流里读 32 位小端字段 *
+ * 注：控制帧头区域统一小端（频率等 32 位字段同理）
  **********************************/
-static uint32_t ctrl_read_be32(const uint8_t *p)
+static uint32_t ctrl_read_le32(const uint8_t *p)
 {
-    return ((uint32_t)p[0] << 24) |
-           ((uint32_t)p[1] << 16) |
-           ((uint32_t)p[2] << 8) |
-           (uint32_t)p[3];
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
 }
 
 /***********************************
@@ -301,17 +246,17 @@ static void parse_version_report(ctrl_version_report_t *frame, const uint8_t *pk
     do {                     \
         frame->field = pkt[offset++]; \
     } while (0)
-#define CTRL_PARSE_BE16(field)                \
+#define CTRL_PARSE_LE16(field)                \
     do {                                      \
-        frame->field = ctrl_read_be16(pkt + offset); \
+        frame->field = ctrl_read_le16(pkt + offset); \
         offset += 2;                          \
     } while (0)
 
-    CTRL_PARSE_BE16(frameHead);
-    CTRL_PARSE_BE16(frameRetain);
-    CTRL_PARSE_BE16(GoalId);
-    CTRL_PARSE_BE16(SourceID);
-    CTRL_PARSE_BE16(synchronizing);
+    CTRL_PARSE_LE16(frameHead);
+    CTRL_PARSE_LE16(frameRetain);
+    CTRL_PARSE_LE16(GoalId);
+    CTRL_PARSE_LE16(SourceID);
+    CTRL_PARSE_LE16(synchronizing);
     CTRL_PARSE_U8(frameType);
     CTRL_PARSE_U8(frameReserve);
     CTRL_PARSE_U8(WEBVersion);
@@ -321,7 +266,7 @@ static void parse_version_report(ctrl_version_report_t *frame, const uint8_t *pk
     CTRL_PARSE_U8(JDCLVersion);
     CTRL_PARSE_U8(frameEnd);
 
-#undef CTRL_PARSE_BE16
+#undef CTRL_PARSE_LE16
 #undef CTRL_PARSE_U8
 }
 
@@ -336,22 +281,22 @@ static void parse_work_param_report(ctrl_work_param_report_t *frame, const uint8
     do {                     \
         frame->field = pkt[offset++]; \
     } while (0)
-#define CTRL_PARSE_BE16(field)                \
+#define CTRL_PARSE_LE16(field)                \
     do {                                      \
-        frame->field = ctrl_read_be16(pkt + offset); \
+        frame->field = ctrl_read_le16(pkt + offset); \
         offset += 2;                          \
     } while (0)
-#define CTRL_PARSE_BE32(field)                \
+#define CTRL_PARSE_LE32(field)                \
     do {                                      \
-        frame->field = ctrl_read_be32(pkt + offset); \
+        frame->field = ctrl_read_le32(pkt + offset); \
         offset += 4;                          \
     } while (0)
 
-    CTRL_PARSE_BE16(frameHead);
-    CTRL_PARSE_BE16(frameRetain);
-    CTRL_PARSE_BE16(GoalId);
-    CTRL_PARSE_BE16(SourceID);
-    CTRL_PARSE_BE16(synchronizing);
+    CTRL_PARSE_LE16(frameHead);
+    CTRL_PARSE_LE16(frameRetain);
+    CTRL_PARSE_LE16(GoalId);
+    CTRL_PARSE_LE16(SourceID);
+    CTRL_PARSE_LE16(synchronizing);
     CTRL_PARSE_U8(frameType);
     CTRL_PARSE_U8(frameReserve);
     CTRL_PARSE_U8(SiteAttribute);
@@ -369,114 +314,59 @@ static void parse_work_param_report(ctrl_work_param_report_t *frame, const uint8
     CTRL_PARSE_U8(WGDZB2datecode);
     CTRL_PARSE_U8(WGDZB3datecode);
     CTRL_PARSE_U8(WGDZB4datecode);
-    CTRL_PARSE_BE16(HopRate);
+    CTRL_PARSE_LE16(HopRate);
     CTRL_PARSE_U8(SynSignal);
     CTRL_PARSE_U8(LinkQuality);
     CTRL_PARSE_U8(FaultSignal);
     CTRL_PARSE_U8(Silent);
     CTRL_PARSE_U8(AllSlient);
     CTRL_PARSE_U8(ChannelInfo);
-    CTRL_PARSE_BE16(ChannelTemp);
+    CTRL_PARSE_LE16(ChannelTemp);
     CTRL_PARSE_U8(ChannelVolt);
     CTRL_PARSE_U8(ChannelElect);
     CTRL_PARSE_U8(RFInfo);
-    CTRL_PARSE_BE16(RFTemp);
+    CTRL_PARSE_LE16(RFTemp);
     CTRL_PARSE_U8(RFVolt);
     CTRL_PARSE_U8(RFElect);
     CTRL_PARSE_U8(BasedInfo);
-    CTRL_PARSE_BE16(BasedTemp);
+    CTRL_PARSE_LE16(BasedTemp);
     CTRL_PARSE_U8(BasedVolt);
     CTRL_PARSE_U8(BasedElect);
     CTRL_PARSE_U8(Power1Info);
-    CTRL_PARSE_BE16(Power1Temp);
+    CTRL_PARSE_LE16(Power1Temp);
     CTRL_PARSE_U8(Power1Volt);
     CTRL_PARSE_U8(Power1Elect);
     CTRL_PARSE_U8(Power2Info);
-    CTRL_PARSE_BE16(Power2Temp);
+    CTRL_PARSE_LE16(Power2Temp);
     CTRL_PARSE_U8(Power2Volt);
     CTRL_PARSE_U8(Power2Elect);
+    CTRL_PARSE_U8(PowerModuleInfo);
+    CTRL_PARSE_LE16(PowerModuleTemp);
+    CTRL_PARSE_U8(PowerModuleVolt);
+    CTRL_PARSE_U8(PowerModuleElect);
     CTRL_PARSE_U8(BandwidthSet);
     CTRL_PARSE_U8(PowerSet);
     CTRL_PARSE_U8(Encryption);
     CTRL_PARSE_U8(WorkMode);
-    CTRL_PARSE_BE32(FixedFrequency);
-    CTRL_PARSE_BE32(AdaHopMinFre);
-    CTRL_PARSE_BE32(AdaHopMaxFre);
+    CTRL_PARSE_LE32(FixedFrequency);
+    CTRL_PARSE_LE32(AdaHopMinFre);
+    CTRL_PARSE_LE32(AdaHopMaxFre);
     CTRL_PARSE_U8(NotAdaHopFre);
     CTRL_PARSE_U8(ComNetName);
-    CTRL_PARSE_BE32(MinFreThreshold);
-    CTRL_PARSE_BE32(MaxFreThreshold);
+    CTRL_PARSE_LE32(MinFreThreshold);
+    CTRL_PARSE_LE32(MaxFreThreshold);
     CTRL_PARSE_U8(Modulation);
     CTRL_PARSE_U8(OnlineNodeSum);
     CTRL_PARSE_U8(ComDataSum);
     CTRL_PARSE_U8(ComDataBER);
     CTRL_PARSE_U8(ComDataPLP);
-    CTRL_PARSE_U8(NodeConnect1);
-    CTRL_PARSE_U8(NodeConnect2);
-    CTRL_PARSE_U8(NodeConnect3);
-    CTRL_PARSE_U8(NodeConnect4);
-    CTRL_PARSE_U8(NodeConnect5);
-    CTRL_PARSE_U8(NodeConnect6);
-    CTRL_PARSE_U8(NodeConnect7);
-    CTRL_PARSE_U8(NodeConnect8);
-    CTRL_PARSE_U8(NodeConnect9);
-    CTRL_PARSE_U8(NodeConnect10);
-    CTRL_PARSE_U8(NodeConnect11);
-    CTRL_PARSE_U8(NodeConnect12);
-    CTRL_PARSE_U8(NodeConnect13);
-    CTRL_PARSE_U8(NodeConnect14);
-    CTRL_PARSE_U8(NodeConnect15);
-    CTRL_PARSE_U8(NodeConnect16);
-    CTRL_PARSE_U8(NodeConnect17);
-    CTRL_PARSE_U8(NodeConnect18);
-    CTRL_PARSE_U8(NodeConnect19);
-    CTRL_PARSE_U8(NodeConnect20);
-    CTRL_PARSE_U8(NodeConnect21);
-    CTRL_PARSE_U8(NodeConnect22);
-    CTRL_PARSE_U8(NodeConnect23);
-    CTRL_PARSE_U8(NodeConnect24);
-    CTRL_PARSE_U8(NodeConnect25);
-    CTRL_PARSE_U8(NodeConnect26);
-    CTRL_PARSE_U8(NodeConnect27);
-    CTRL_PARSE_U8(NodeConnect28);
-    CTRL_PARSE_U8(NodeConnect29);
-    CTRL_PARSE_U8(NodeConnect30);
-    CTRL_PARSE_U8(NodeConnect31);
-    CTRL_PARSE_U8(NodeConnect32);
-    CTRL_PARSE_U8(NodeConnect33);
-    CTRL_PARSE_U8(NodeConnect34);
-    CTRL_PARSE_U8(NodeConnect35);
-    CTRL_PARSE_U8(NodeConnect36);
-    CTRL_PARSE_U8(NodeConnect37);
-    CTRL_PARSE_U8(NodeConnect38);
-    CTRL_PARSE_U8(NodeConnect39);
-    CTRL_PARSE_U8(NodeConnect40);
-    CTRL_PARSE_U8(NodeConnect41);
-    CTRL_PARSE_U8(NodeConnect42);
-    CTRL_PARSE_U8(NodeConnect43);
-    CTRL_PARSE_U8(NodeConnect44);
-    CTRL_PARSE_U8(NodeConnect45);
-    CTRL_PARSE_U8(NodeConnect46);
-    CTRL_PARSE_U8(NodeConnect47);
-    CTRL_PARSE_U8(NodeConnect48);
-    CTRL_PARSE_U8(NodeConnect49);
-    CTRL_PARSE_U8(NodeConnect50);
-    CTRL_PARSE_U8(NodeConnect51);
-    CTRL_PARSE_U8(NodeConnect52);
-    CTRL_PARSE_U8(NodeConnect53);
-    CTRL_PARSE_U8(NodeConnect54);
-    CTRL_PARSE_U8(NodeConnect55);
-    CTRL_PARSE_U8(NodeConnect56);
-    CTRL_PARSE_U8(NodeConnect57);
-    CTRL_PARSE_U8(NodeConnect58);
-    CTRL_PARSE_U8(NodeConnect59);
-    CTRL_PARSE_U8(NodeConnect60);
-    CTRL_PARSE_U8(NodeConnect61);
-    CTRL_PARSE_U8(NodeConnect62);
+    /* 节点连接关系段：128 字节（32 节点 × 4B/节点，含自连接） */
+    for (size_t i = 0; i < 128; i++)
+        CTRL_PARSE_U8(NodeConnect[i]);
     CTRL_PARSE_U8(frameEnd);
 
-#undef CTRL_PARSE_BE32
-#undef CTRL_PARSE_BE16
+#undef CTRL_PARSE_LE32
+#undef CTRL_PARSE_LE16
 #undef CTRL_PARSE_U8
 }
 
@@ -731,6 +621,71 @@ void control_socket_close(void)
     }
 }
 
+/***************************************
+ *   BCD 字节解码：一个字节拆成两位十进制 *
+ *   非法 BCD（任一半字节 > 9）返回 0xFFFF *
+ ***************************************/
+static uint16_t bcd_dec_byte(uint8_t b)
+{
+    uint8_t hi;     /* 高 4 位：十位 */
+    uint8_t lo;     /* 低 4 位：个位 */
+
+    hi = (uint8_t)((b >> 4) & 0x0F);
+    lo = (uint8_t)(b & 0x0F);
+    if (hi > 9 || lo > 9)
+        return 0xFFFF;      /* 非法 BCD：交给调用方判错 */
+
+    return (uint16_t)(hi * 10 + lo);
+}
+
+/***************************************
+ *  给网管回一条 13 字节的应答帧         *
+ *  mode: CTRL_FRAME_TYPE_ACK (0x30)    *
+ *        或 CTRL_FRAME_TYPE_NACK(0x40) *
+ *                                      *
+ *  帧格式与 CPU1 上报的应答帧一致：      *
+ *    [0..1]  长度 = 13（小端）          *
+ *    [2..3]  保留 0x0000               *
+ *    [4..5]  目的 ID                   *
+ *    [6..7]  源 ID                     *
+ *    [8..9]  同步序列 0xFFF5           *
+ *    [10]    类型 mode                 *
+ *    [11]    保留 cnt，必须为 0x00     *
+ *    [12]    校验和                    *
+ *                                      *
+ *  按协议校验和 = pkt[10] ^ pkt[11]，   *
+ *  取 cnt = 0x00 时结果恰等于 mode，    *
+ *  正好与网管侧判定所用的 FrameEnd 重合 *
+ *  （网管读 buffer[12] 判 0x30/0x40）。 *
+ *                                      *
+ *  注意：这里直接 sendto 本机 3419，     *
+ *  不能走 /dev/amp_ctrl —— 那个方向是   *
+ *  发给 CPU1 路由固件的。               *
+ ***************************************/
+static void portcfg_send_reply(uint8_t mode)
+{
+    uint8_t frame[13];
+    ssize_t sent;
+
+    memset(frame, 0, sizeof(frame));
+    ctrl_write_le16(frame + 0, 13);                 /* 长度字段（含长度字段自身） */
+    ctrl_write_le16(frame + 2, 0x0000);             /* 保留 */
+    ctrl_write_le16(frame + 4, SRIO_ID_ROUTER);     /* 目的 ID */
+    ctrl_write_le16(frame + 6, SRIO_ID_MASTER);     /* 源 ID */
+    ctrl_write_le16(frame + 8, CLOCK_SYNC_MAGIC);   /* 同步序列 0xFFF5 */
+    frame[10] = mode;                               /* 类型：0x30 ACK / 0x40 NACK */
+    frame[11] = 0x00;                               /* 保留 cnt，网管侧要求必须为 0 */
+    frame[12] = mode;                               /* 校验和 = mode ^ 0x00 = mode */
+
+    sent = sendto(control_sockfd, frame, sizeof(frame), 0,
+                  (struct sockaddr *)&control_report_peer,
+                  sizeof(control_report_peer));
+    if (sent < 0)
+        perror("sendto(port reply)");
+    else if (sent != (ssize_t)sizeof(frame))
+        fprintf(stderr, "[WARN] short sendto(port reply): %zd/%zu\n", sent, sizeof(frame));
+}
+
 /***********************************
  *           控制数据写入线程       *
  **********************************/
@@ -760,6 +715,54 @@ void *control_rx_to_amp_thread(void *arg)
         if (!ctrl_frame_is_valid(buffer, (size_t)rx_len)) {
             fprintf(stderr, "[WARN] invalid control frame dropped, len=%zd\n", rx_len);
             continue;
+        }
+
+        /* 业务端口配置帧（0x21）：主控本地消费，不透传给路由固件。
+         * 其余所有类型一律保持原有行为，原样写入 /dev/amp_ctrl 转发给 CPU1。 */
+        if (buffer[10] == CTRL_FRAME_TYPE_BUSINESS_PORT) {
+            uint16_t new_port;              /* 从 BCD 解码出来的新业务端口 */
+            uint16_t digit;                 /* 单个 BCD 字节解码出的两位十进制数 */
+            uint32_t acc;                   /* BCD 逐字节累加结果 */
+            int i;
+
+            /* 帧长必须是 16 字节：12 字节帧头 + 3 字节 BCD + 1 字节校验和。
+             * 校验和已由 ctrl_frame_is_valid 验过，这里再判长度是为了
+             * 防止短帧越界读到 buffer[13] / buffer[14]。 */
+            if ((size_t)rx_len < BUSINESS_PORT_FRAME_LEN) {
+                fprintf(stderr, "[WARN] business-port frame too short: %zd < %d\n",
+                        rx_len, BUSINESS_PORT_FRAME_LEN);
+                portcfg_send_reply(CTRL_FRAME_TYPE_NACK);
+                continue;
+            }
+
+            /* 3 字节 BCD，高位在前：3408 -> 00 34 08 */
+            acc = 0;
+            for (i = 0; i < BUSINESS_PORT_BCD_BYTES; i++) {
+                digit = bcd_dec_byte(buffer[12 + i]);
+                if (digit == 0xFFFF) {          /* 非法 BCD：标记为失败并跳出 */
+                    acc = 0xFFFFFFFFu;
+                    break;
+                }
+                acc = acc * 100u + digit;
+            }
+
+            if (acc == 0xFFFFFFFFu || acc > BUSINESS_PORT_MAX) {
+                fprintf(stderr, "[WARN] business-port frame carries invalid BCD port\n");
+                portcfg_send_reply(CTRL_FRAME_TYPE_NACK);
+                continue;
+            }
+            new_port = (uint16_t)acc;
+
+            /* 应用并持久化：越界或撞 3409/3419 都会失败，回 NACK */
+            if (portcfg_apply_and_save(new_port) != 0) {
+                portcfg_send_reply(CTRL_FRAME_TYPE_NACK);
+                continue;
+            }
+
+            fprintf(stderr, "[INFO] business port updated to %u by network manager\n",
+                    (unsigned)new_port);
+            portcfg_send_reply(CTRL_FRAME_TYPE_ACK);
+            continue;                           /* 关键：不 write(ctrl_fd)，到此为止 */
         }
 
         memset(&msg, 0, sizeof(msg));
