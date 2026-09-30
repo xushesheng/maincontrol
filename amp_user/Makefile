@@ -6,8 +6,10 @@ SRCS = \
 	user_main.c \
 	user_gateway.c \
 	user_datapath.c \
+	user_bcast.c \
 	user_portcfg.c \
-	user_control.c
+	user_control.c \
+	user_link.c
 
 OBJS = $(SRCS:.c=.o)
 

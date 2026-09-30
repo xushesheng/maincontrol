@@ -7,6 +7,7 @@
 #include <fcntl.h>                 /* fcntl / O_NONBLOCK */
 #include <errno.h>                 /* errno / EAGAIN / EINTR */
 #include <poll.h>                  /* poll() 多路复用 */
+#include <time.h>                  /* time()：诊断日志按秒限频用 */
 #include <stddef.h>                /* offsetof / size_t */
 #include <sys/ioctl.h>             /* ioctl() */
 #include <sys/socket.h>            /* socket 地址结构 */
@@ -316,6 +317,7 @@ int amp_flush_batch_if_any(batch_state_t *b)
     return rc;
 }
 
+
 /**********************
 *   ping包判断函数    *
 **********************/
@@ -345,8 +347,10 @@ static int is_ping_or(const uint8_t *pkt, size_t len)
 /* 对UDP业务做端口分流：
  * g_business_port（默认 3408，可由网管下发配置帧修改）进入业务面；
  * 3409 保留给独立控制面，不进入TUN业务通道；
- * 其他UDP流量当前不进入AMP业务面。 */
-static int classify_udp_business_port(const uint8_t *pkt, size_t len)
+ * 其他UDP流量当前不进入AMP业务面。
+ * 注意：非 static —— 广播桥接入口（user_bcast.c 抓到的 eth0 二层广播）复用同一份策略，
+ * 保证"TUN 入口"与"广播桥接入口"的准入规则不会分叉。 */
+int classify_udp_business_port(const uint8_t *pkt, size_t len)
 {
     const struct iphdr *ip;
     size_t ihl;
@@ -437,17 +441,20 @@ void *tun_to_amp_thread(void *arg)
                 continue;
 
             ip = (struct iphdr *)buf;
-            if (ip->version != 4)
+            if (ip->version != 4) {
                 continue;
-            if (ip->daddr != BROADCAST_IP_BE && !is_peer_pc_addr(ip->daddr))       //广播+对端节点IP才走AMP通道
+            }
+            if (ip->daddr != BROADCAST_IP_BE && !is_peer_pc_addr(ip->daddr)) {     //广播+对端节点IP才走AMP通道
                 continue;
+            }
 
             pkt_len = (size_t)n;      //定义pkt_len设置为本条IP包长度
             dst_ip = ip->daddr;       //定义dst_ip赋值为当前IP包目的地址
             udp_class = classify_udp_business_port(buf, pkt_len);
 
-            if (udp_class < 0)
+            if (udp_class < 0) {
                 continue;
+            }
 
 #if AMP_ICMP_FASTPATH   //是否开启ICMP包快速通道
             is_ping = is_ping_or(buf, pkt_len); //判断是否为ping包，是的话置is_ping为1
@@ -526,15 +533,29 @@ void *amp_to_tun_thread(void *arg)
 		/*********读到数据后过滤一遍下列条件**********/
 
         if (n < 0) {
-            if (errno == EINTR)
+            if (errno == EINTR)                     /* 被信号打断：立即重试，不算错误 */
                 continue;
-            perror("read(amp)");
-            break;
+            if (errno == ENODEV)                    /* 驱动已卸载（remove 时 count 置 -1）：无法恢复，退出线程 */
+                break;
+            /* 其余瞬时错误（EIO/EFAULT 等）：绝不能直接退出线程 —— 否则用户态不再消费下行包，
+             * 驱动侧仍持续入队而本地 PC 永久收不到数据。这里限频打印（每秒最多一条）+ 退避后重试。 */
+            {
+                static time_t last_err_log = 0;
+                time_t now = time(NULL);
+                if (now != last_err_log) {
+                    last_err_log = now;
+                    perror("read(amp)");
+                }
+            }
+            usleep(1000);
+            continue;
         }
         if ((size_t)n < offsetof(struct amp_net_msg, data))
             continue;
-        if (msg.len == 0 || msg.len > MAX_PAYLOAD_SIZE)
+        if (msg.len == 0 || msg.len > MAX_PAYLOAD_SIZE){
+            fprintf(stderr, "[WARN] len invalid\n");
             continue;
+        }
         /* 当前 /dev/amp_ipi RX 路径只回传业务数据 */
 
         /* 兼容：
@@ -563,11 +584,15 @@ void *amp_to_tun_thread(void *arg)
                     break;
                 if (tun_write_packet(tun_fd, msg.data + off, zl) != 0)
                     perror("write(tun)");
+                /* 广播包：内核对此只会做本地投递、不会从 eth0 发出（详见 user_bcast.c 顶部说明），
+                 * 因此由用户态在 eth0 上补发一份二层广播，本地 PC 才收得到 */
+                bcast_maybe_relay(msg.data + off, zl);
                 off += zl;
             }
         } else {        //否则就是单包IP包，直接整个写回TUN
             if (tun_write_packet(tun_fd, msg.data, msg.len) != 0)
                 perror("write(tun)");
+            bcast_maybe_relay(msg.data, msg.len);
         }
     }
 

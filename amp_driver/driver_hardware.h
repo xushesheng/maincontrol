@@ -101,6 +101,7 @@ extern atomic_t rx_drop_full;                           /* 队列满导致的丢
 extern atomic_t rx_enqueued;                            /* 累计入队成功计数 */
 extern atomic_t rx_dequeued;                            /* 累计出队成功计数 */
 extern atomic_t tx_busy_timeout;                        /* TX 单槽被占用导致超时丢包计数 */
+extern atomic_t rx_interrupt_count;                     /* CPU1->CPU0 RX 中断累计计数（每次 SGI14 触发 +1） */
 extern wait_queue_head_t rx_wq;                         /* 业务 RX 等待队列：用户态阻塞等待数据到来 */
 
 /* ========= 控制 RX 环形队列全局变量 ========= */
@@ -147,6 +148,8 @@ u32 nodeid_to_ip(u32 node_id);              /* 节点号 -> IP 地址逆映射 *
 int process_udp_data(struct amp_net_msg *msg);      /* 处理业务数据：写入 TX 共享内存并通知 CPU1 */
 int process_ctrl_data(struct amp_ctrl_msg *msg);    /* 处理控制数据：写入 TX 共享内存并通知 CPU1 */
 void cpu1_to_cpu0_handler(int ipinr, void *dev_id); /* SGI14 软中断处理函数：CPU1 通知 CPU0 有数据回传 */
+void amp_rx_stat_timer_start(void);                 /* 启动 RX 中断计数 5s 周期打印定时器 */
+void amp_rx_stat_timer_stop(void);                  /* 停止并等待周期打印定时器（模块卸载用） */
 
 ssize_t amp_write(struct file *file, const char __user *buf, size_t len, loff_t *ppos);     /* 用户态写入业务数据接口：copy_from_user -> process_udp_data */
 ssize_t amp_read(struct file *file, char __user *buf, size_t len, loff_t *ppos);            /* 用户态读取业务数据接口：从 RX 环形队列 copy_to_user */

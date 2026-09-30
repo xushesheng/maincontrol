@@ -7,6 +7,7 @@
 #include <linux/io.h>                  /* IO 内存读写（readb/writeb/writel/memcpy_fromio/memcpy_toio） */
 #include <linux/string.h>              /* memset/memcpy */
 #include <linux/delay.h>               /* udelay 微秒延时 */
+#include <linux/timer.h>               /* timer_list：RX 中断计数 5s 周期打印 */
 #include <linux/sched.h>               /* 进程调度（signal_pending） */
 #include <linux/sched/signal.h>        /* 信号相关 */
 #include <asm/barrier.h>               /* 内存屏障（wmb/mb/rmb） */
@@ -326,6 +327,8 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
 
     (void)ipinr;        /* 抑制未使用警告 */
     (void)dev_id;
+
+    atomic_inc(&rx_interrupt_count);        /* 每次 RX 中断 +1 */
     
     /* 中断接收检查：验证驱动程序能否响应到对方中断 */
     amp_pr_info(" AMP RX: sgi=%d \n",AMP_SGI_RX); //接收到的IPI中断14
@@ -398,4 +401,37 @@ void cpu1_to_cpu0_handler(int ipinr, void *dev_id)
 
         clear_rx_enable_bit();          /* 读完清零 */
     }
+}
+
+
+/*************************************/
+/* RX 中断计数 5s 周期打印定时器        */
+/* 在定时器软中断上下文中打印，不占用 IRQ */
+/*************************************/
+static struct timer_list rx_stat_timer;    /* 5s 周期打印定时器 */
+
+static void rx_stat_timer_fn(struct timer_list *t)
+{
+    (void)t;                                    /* 抑制未使用参数警告 */
+    unsigned long total = atomic_read(&rx_interrupt_count);
+    unsigned long enq   = atomic_read(&rx_enqueued);
+    unsigned long drop  = atomic_read(&rx_drop_full);
+    unsigned long deq   = atomic_read(&rx_dequeued);
+
+    if (amp_verbose)
+        pr_info("AMP RX: irq_total=%lu enqueued=%lu drop_full=%lu dequeued=%lu\n",
+                total, enq, drop, deq);
+
+    mod_timer(&rx_stat_timer, jiffies + 5 * HZ);
+}
+
+void amp_rx_stat_timer_start(void)
+{
+    timer_setup(&rx_stat_timer, rx_stat_timer_fn, 0);
+    mod_timer(&rx_stat_timer, jiffies + 5 * HZ);
+}
+
+void amp_rx_stat_timer_stop(void)
+{
+    del_timer_sync(&rx_stat_timer);
 }

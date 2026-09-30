@@ -19,7 +19,8 @@ spinlock_t rx_ring_lock;                         /* 队列自旋锁（在 map �
 atomic_t rx_drop_full = ATOMIC_INIT(0);         /* 满丢包计数初始 0 */
 atomic_t rx_enqueued = ATOMIC_INIT(0);          /* 入队累计计数初始 0 */
 atomic_t rx_dequeued = ATOMIC_INIT(0);          /* 出队累计计数初始 0 */
-atomic_t tx_busy_timeout = ATOMIC_INIT(0);      /* TX 单槽被占用导致超时丢包计数 */
+atomic_t tx_busy_timeout = ATOMIC_INIT(0);        /* TX 单槽被占用导致超时丢包计数 */
+atomic_t rx_interrupt_count = ATOMIC_INIT(0);      /* RX 中断累计计数初始 0 */
 wait_queue_head_t rx_wq;                         /* 业务等待队列头（在 map 函数中 init） */
 
 /* ========= 控制 RX 环形队列的全局变量定义 ========= */
@@ -128,6 +129,7 @@ int driver_amp_map_resources(void)
     atomic_set(&rx_ring_count, 0);
     atomic_set(&rx_drop_full, 0);
     atomic_set(&rx_enqueued, 0);
+    atomic_set(&rx_interrupt_count, 0);
     atomic_set(&rx_dequeued, 0);
 
     /* 初始化控制RX等待队列 */

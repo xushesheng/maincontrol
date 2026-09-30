@@ -14,12 +14,15 @@ int ctrl_fd = -1;   /* /dev/amp_ctrl 文件描述符 */
 int tun_fd = -1;    /* TUN 设备 rf0 文件描述符 */
 
 /* ============================================================
- * 主控用户态线程模型（主线程 + 5 个工作线程）
+ * 主控用户态线程模型（主线程 + 7 个工作线程）
  *   amp_tx_thread            统一写 /dev/amp_ipi（业务），串行化避免并发踩 TX 单槽
  *   tun_to_amp_thread        TUN(rf0) 读 IP 包 -> 聚合/单发 -> /dev/amp_ipi（业务上行）
  *   amp_to_tun_thread        /dev/amp_ipi 读 -> 拆 AMPB/原始 IP -> TUN(rf0)（业务下行）
  *   control_rx_to_amp_thread 网管 UDP 3409 -> /dev/amp_ctrl（控制指令上行）
  *   control_amp_to_udp_thread /dev/amp_ctrl -> 网管 UDP 3419（控制回执/上报下行）
+ *   link_mcast_thread        组播链路：1s 周期发检测/工作状态报文，收反馈维护建链
+ *   bcast_uplink_thread      eth0 二层广播 -> /dev/amp_ipi（node 255），绕开被 local 表
+ *                            架空的广播路由（下行中继在 amp_to_tun_thread 里顺带做）
  * 三大设备 fd：amp_fd(/dev/amp_ipi)、ctrl_fd(/dev/amp_ctrl)、tun_fd(rf0)
  * ============================================================ */
 
@@ -27,7 +30,7 @@ volatile int g_running = 1;     /* 全局运行标志：驱动加载后初始为
 
 int main(void)
 {
-#define AMP_THREAD_COUNT 5                  /* 共 5 个工作线程 */
+#define AMP_THREAD_COUNT 7                  /* 共 7 个工作线程 */
     pthread_t threads[AMP_THREAD_COUNT];    /* 线程 ID 数组 */
     int thread_created[AMP_THREAD_COUNT];   /* 标记哪些线程已创建成功（用于回滚） */
     int i;                                  /* 循环索引 */
@@ -67,7 +70,14 @@ int main(void)
     /* 步骤5.5：开机一次性下发 0x19 时钟帧给路由（带初始延时+重试，失败不致命） */
     clock_send_on_boot();
 
-    /* 步骤6：创建 5 个工作线程 */
+    /* 步骤5.6：初始化组播链路 socket（加入 224.5.1.13:8600，发往 224.1.1.5:6200） */
+    if (link_socket_init() != 0)
+        goto err_tun_fd;    /* 回滚：跳转到关闭 tun_fd/ctrl_fd/amp_fd */
+
+    /* 步骤5.7：初始化广播二层桥接 socket（eth0 的 AF_PACKET；失败不致命，只是广播不通） */
+    (void)bcast_socket_init();
+
+    /* 步骤6：创建 7 个工作线程 */
 
     /* 线程0：统一业务发送线程（从队列取数据 -> write /dev/amp_ipi） */
     if (pthread_create(&threads[0], NULL, amp_tx_thread, NULL) != 0) {
@@ -104,12 +114,28 @@ int main(void)
     }
     thread_created[4] = 1;
 
+    /* 线程5：组播链路维护（1s 周期发检测/状态报文，收反馈维护建链） */
+    if (pthread_create(&threads[5], NULL, link_mcast_thread, NULL) != 0) {
+        perror("pthread_create(link_mcast)");
+        goto err_threads;
+    }
+    thread_created[5] = 1;
+
+    /* 线程6：广播上行（eth0 二层广播 -> /dev/amp_ipi，绕开被 local 表架空的广播路由） */
+    if (pthread_create(&threads[6], NULL, bcast_uplink_thread, NULL) != 0) {
+        perror("pthread_create(bcast_uplink)");
+        goto err_threads;
+    }
+    thread_created[6] = 1;
+
     /* 等待所有线程结束 */
     for (i = 0; i < AMP_THREAD_COUNT; i++)
         pthread_join(threads[i], NULL);
 
     /* 正常退出：清理资源 */
     control_socket_close();     /* 关闭控制 UDP socket */
+    link_socket_close();        /* 关闭组播 socket */
+    bcast_socket_close();       /* 关闭广播桥接 socket */
     close(tun_fd);              /* 关闭 TUN 设备 */
     close(ctrl_fd);             /* 关闭控制设备 */
     close(amp_fd);              /* 关闭业务设备 */
@@ -132,6 +158,8 @@ err_threads:
     }
 
     control_socket_close();     /* 关闭控制 socket */
+    link_socket_close();        /* 关闭组播 socket */
+    bcast_socket_close();       /* 关闭广播桥接 socket */
 
 err_tun_fd:
     close(tun_fd);              /* 关闭 TUN */

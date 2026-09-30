@@ -823,3 +823,39 @@ void *control_amp_to_udp_thread(void *arg)
 
     return NULL;
 }
+
+/*************************************************************
+ *  对外提供：从工作参数上报缓存中取链路报文所需的状态字段       *
+ *  按协议 20260912，旧版工作状态报文的两个字段已拆分到不同报文：*
+ *    dev_status -> BIT 检测报文 0xA2 的「通信设备状态」         *
+ *    rf_state   -> 工作状态报文 0xA4 的「静默/辐射状态」        *
+ *    dev_status : 0x33 正常 / 0xAA 故障                        *
+ *    rf_state   : 0x00 静默 / 0x01 辐射                        *
+ *  返回 0 表示取到有效缓存；<0 表示缓存尚未就绪（不改写入参）  *
+ *  缓存与互斥锁均保留在本文件内部，不对外部暴露。              *
+ *************************************************************/
+int ctrl_get_work_status(uint8_t *dev_status, uint8_t *rf_state)
+{
+    if (!dev_status || !rf_state)
+        return -1;
+
+    pthread_mutex_lock(&control_cache_lock);
+
+    if (!last_work_param_report.valid) {
+        pthread_mutex_unlock(&control_cache_lock);
+        return -1;                                      /* CPU1 尚未上报过工作参数 */
+    }
+
+    /* 通信设备状态：FaultSignal 的取值语义尚未与对方最终对齐，
+     * 当前按「0 = 无故障」映射为 0x33，其余一律映射为 0xAA。 */
+    *dev_status = (last_work_param_report.frame.FaultSignal == 0)
+                  ? LINK_DEV_STATUS_NORMAL : LINK_DEV_STATUS_FAULT;
+
+    /* 静默/辐射：取本地静默标志位 Silent；
+     * AllSlient 为全网静默标志，当前不参与本字段映射。 */
+    *rf_state = (last_work_param_report.frame.Silent == 0)
+                ? LINK_RF_SILENT : LINK_RF_RADIATE;
+
+    pthread_mutex_unlock(&control_cache_lock);
+    return 0;
+}

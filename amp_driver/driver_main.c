@@ -114,8 +114,7 @@ ssize_t amp_write(struct file *file, const char __user *buf, size_t len, loff_t 
         goto out_unlock;
 
     /* 打印发送日志（频率限制避免刷屏） */
-    amp_pr_info("TX: ip=%pI4 len=%u target=%u sgi=%u\n",
-            &msg->ip, msg->len, 3, AMP_SGI_TX);
+    amp_pr_info("TX: ip=%pI4 len=%u target=%u sgi=%u\n",&msg->ip, msg->len, 3, AMP_SGI_TX);
 
     /* 向 CPU1（CPU 3）发送 SGI15 中断，通知其读取业务数据 */
     smp_kick_ipi(cpumask_of(3), AMP_SGI_TX);
@@ -166,8 +165,7 @@ ssize_t amp_ctrl_write(struct file *file, const char __user *buf, size_t len, lo
         goto out_unlock;
 
     /* 打印控制发送日志 */
-    amp_pr_info("CTRL TX: len=%u target=%u sgi=%u\n",
-            msg->len, 3, AMP_SGI_TX);
+    amp_pr_info("CTRL TX: len=%u target=%u sgi=%u\n",msg->len, 3, AMP_SGI_TX);
 
     /* 向 CPU1 发送 SGI15 中断，通知其读取控制数据 */
     smp_kick_ipi(cpumask_of(3), AMP_SGI_TX);
@@ -396,6 +394,10 @@ static int zynq_amp_probe(struct platform_device *pdev)
         goto error;
     }
 
+    amp_rx_stat_timer_start();
+
+
+
     return 0;   /* probe 成功 */
 
 error:
@@ -412,6 +414,7 @@ error:
 static int zynq_amp_remove(struct platform_device *pdev)
 {
     /* 1. 先注销中断——阻止新的 RX 数据进入（之后的中断不再被处理） */
+    amp_rx_stat_timer_stop();
     clear_ipi_handler(AMP_SGI_RX);
 
     /* 2. 将计数置为 -1 标记"设备正在卸载"，然后唤醒所有阻塞在 read() 上的线程 */

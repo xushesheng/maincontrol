@@ -28,7 +28,7 @@ struct amp_ctrl_msg {
 };
 
 #pragma pack(push, 1)                   /* 按 1 字节对齐：确保结构体紧凑，无填充字节 */
-/* 一批次帧头结构体（AMPB 协议头，8 字节） */
+/* 一批次帧头结构体（AMPB 协议头，12 字节） */
 typedef struct {
     uint8_t magic[4];                   /* 魔数："AMPB"，用于识别 AMP 批帧 */
     uint8_t version;                    /* 版本号：当前为 1 */

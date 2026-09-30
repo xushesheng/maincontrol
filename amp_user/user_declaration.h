@@ -60,6 +60,11 @@ int is_peer_pc_addr(uint32_t ip_be);            /* 判断一个 IP 是否属于�
 int control_socket_init(void);                  /* 创建并绑定 UDP 3409 socket */
 void control_socket_close(void);                /* 关闭控制 socket */
 int clock_send_on_boot(void);                   /* 开机一次性下发 0x19 时钟帧 */
+int ctrl_get_work_status(uint8_t *dev_status, uint8_t *rf_state);  /* 取缓存中的通信设备状态与静默/辐射状态 */
+
+/* ========= 组播链路相关函数（通信设备 <-> 指挥协同计算机） ========= */
+int link_socket_init(void);                     /* 创建组播 socket 并加入本机组播组 */
+void link_socket_close(void);                   /* 关闭组播 socket */
 
 /* ========= 批次聚合相关函数 ========= */
 void batch_reset(batch_state_t *b);             /* 初始化/重置批次帧 */
@@ -68,11 +73,23 @@ int amp_flush_batch_if_any(batch_state_t *b);   /* 发送当前批次（如有�
 
 int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len);  /* 构造并发送一条业务消息 */
 
-/* ========= 5 个工作线程入口 ========= */
+/* ========= 业务面准入与诊断（定义见 user_datapath.c，user_bcast.c 复用） ========= */
+/* TUN 入口与广播桥接入口共用同一份端口准入策略，避免两条入口的过滤规则分叉 */
+int classify_udp_business_port(const uint8_t *pkt, size_t len);
+
+
+/* ========= 广播二层桥接（用户态 AF_PACKET，定义见 user_bcast.c） ========= */
+int bcast_socket_init(void);                    /* 创建并绑定 eth0 的 AF_PACKET 套接字，失败返回 -1（非致命） */
+void bcast_socket_close(void);                  /* 关闭广播桥接套接字 */
+void *bcast_uplink_thread(void *arg);           /* 广播上行线程：抓 eth0 二层广播 -> /dev/amp_ipi（node 255） */
+void bcast_maybe_relay(const uint8_t *pkt, size_t len);  /* 下行中继：daddr=255 的包在 eth0 上补发一份二层广播给本地 PC */
+
+/* ========= 7 个工作线程入口 ========= */
 void *amp_tx_thread(void *arg);                 /* 统一业务发送线程：从队列取数据写 /dev/amp_ipi */
 void *tun_to_amp_thread(void *arg);             /* TUN -> AMP 线程：从 rf0 读 IP 包，聚合发送 */
 void *amp_to_tun_thread(void *arg);             /* AMP -> TUN 线程：从 /dev/amp_ipi 读，写回 rf0 */
 void *control_rx_to_amp_thread(void *arg);      /* 控制上行线程：UDP 3409 -> /dev/amp_ctrl */
 void *control_amp_to_udp_thread(void *arg);     /* 控制下行线程：/dev/amp_ctrl -> UDP 3419 */
+void *link_mcast_thread(void *arg);             /* 组播链路线程：检测/状态报文发送与反馈接收 */
 
 #endif
