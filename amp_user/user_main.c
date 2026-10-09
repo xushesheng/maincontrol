@@ -70,6 +70,9 @@ int main(void)
     /* 步骤5.5：开机一次性下发 0x19 时钟帧给路由（带初始延时+重试，失败不致命） */
     clock_send_on_boot();
 
+    /* 步骤5.5.1：开机一次性下发 0x09 频表帧给路由（读网管 JSON 频表文件，带初始延时+重试，失败不致命） */
+    (void)freqtable_send_on_boot();
+
     /* 步骤5.6：初始化组播链路 socket（加入 224.5.1.13:8600，发往 224.1.1.5:6200） */
     if (link_socket_init() != 0)
         goto err_tun_fd;    /* 回滚：跳转到关闭 tun_fd/ctrl_fd/amp_fd */

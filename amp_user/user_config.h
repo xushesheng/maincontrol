@@ -24,25 +24,13 @@
 #define BUSINESS_PORT_MIN 1024              /* 合法业务端口下限：避开特权端口与常见服务端口 */
 #define BUSINESS_PORT_MAX 65535             /* 合法业务端口上限 */
 
-/* 聚合帧最大长度（只对“批帧 AMPB”限制 640，单包直发不受此限制） */
-#define AMP_BATCH_MAX_BYTES 640
-#define AMP_BATCH_MAGIC "AMPB"
-#define AMP_BATCH_VERSION 1
-
-/* 聚合窗口：第一个包进入批次后，最多再等这么多 ms 看能不能凑更多包。
- * 调大：吞吐更好但交互/ ping RTT 更大；调小：时延更好但 SGI 次数更多。 */
-#define AMP_BATCH_TIMEOUT_MS 60
-
 /* 业务数据统一串行下发到驱动，避免并发踩写 TX 单槽 */
-#define AMP_TX_QUEUE_DEPTH 64
+#define  AMP_TX_QUEUE_DEPTH 64
 
 /* 每次写完 /dev/amp_ipi 后，留一个很小的保护间隔，降低 TX 单槽覆盖概率 */
 #define AMP_TX_GUARD_US 200
 
-/* ICMP/ping 快速通道开关（1为开启，0为关闭） */
-#define AMP_ICMP_FASTPATH 1
-
-/* rf0 MTU：为了允许 >640 的 IP 包“单包直发” */
+/* rf0 MTU：按标准以太网设置，保证业务 IP 包可完整注入 TUN */
 #define RF0_MTU 1500
 
 /* 广播地址 192.168.1.255：用于与 struct iphdr.daddr（__be32）直接比较。
@@ -60,6 +48,23 @@
 #define CLOCK_BOOT_DELAY_SEC    3       /* 启动后延迟若干秒再发，等路由固件就绪 */
 #define CLOCK_BOOT_RETRY        10      /* 发送失败（TX 单槽未释放等）最多重试次数 */
 #define CLOCK_BOOT_RETRY_GAP_SEC 1      /* 重试间隔（秒） */
+
+/* ========= 开机自启动频表下发（协议 表5.11，类型 0x09，见 user_freqtable.c） ========= */
+#define CTRL_FRAME_TYPE_FREQTABLE   0x09    /* 主控开机下发非自适应跳频频表设置帧 */
+#define FREQTABLE_LAST_SENT_FILE "/data/lastSentFreqTable.json"  /* 网管 jar 数据目录：最近下发频表号（占位路径，部署时按实际 data 目录修改） */
+#define FREQTABLE_STORE_FILE     "/data/freqtable.json"         /* 网管 jar 数据目录：频表库（占位路径，部署时按实际 data 目录修改） */
+#define FREQTABLE_BOOT_DELAY_SEC    3       /* 组帧成功后延迟若干秒再发，等路由固件就绪（与 0x19 同款） */
+#define FREQTABLE_BOOT_RETRY        10      /* 写 /dev/amp_ctrl 失败最多重试次数 */
+#define FREQTABLE_BOOT_RETRY_GAP_SEC 1      /* 重试间隔（秒） */
+#define FREQTABLE_TABLE_ID_MAX      99      /* 频表号上限（1 字节 BCD：0~99） */
+#define FREQTABLE_POINT_ID_MAX      511     /* 频点编号上限（2 字节 BCD：0~511） */
+#define FREQTABLE_FREQ_MIN          470     /* 频点频率下限（MHz，2 字节 BCD） */
+#define FREQTABLE_FREQ_MAX          790     /* 频点频率上限（MHz） */
+#define FREQTABLE_POINT_MAX         321     /* 协议单帧频点总数上限（网管库可存 512，超出整表拒发） */
+#define FREQTABLE_FRAME_MAX         (16 + 4 * FREQTABLE_POINT_MAX)  /* 最大整帧：12 头 + 3 载荷头 + 4×321 + 1 校验 = 1300 字节 */
+#define FREQTABLE_JSON_MAX_BYTES    (8 << 20)  /* 两个 JSON 文件大小上限（8MiB）：全库 100 表×512 点 pretty-print 约 2.6MB，
+                                                    * 1MiB 会误拒极端场景；cJSON 解析 DOM 峰值内存约为文件大小的数倍（瞬时，
+                                                    * 仅启动期、业务线程未创建时），解析完即释放，板卡内存可承受 */
 
 /* ========= 广播二层桥接（用户态 AF_PACKET，见 user_bcast.c） ========= */
 /* 背景：192.168.1.255 是 eth0 自身网段的定向广播，内核在 local 表里自动生成

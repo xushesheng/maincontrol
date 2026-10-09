@@ -8,7 +8,7 @@
 #include <stdint.h>             /* 固定宽度整数类型 */
 #include <stddef.h>             /* size_t */
 
-#include "user_struct.h"        /* amp_net_msg / amp_ctrl_msg / batch_state_t */
+#include "user_struct.h"        /* amp_net_msg / amp_ctrl_msg */
 
 /* ========= 全局文件描述符 ========= */
 extern int amp_fd;              /* /dev/amp_ipi 文件描述符（业务数据） */
@@ -60,16 +60,12 @@ int is_peer_pc_addr(uint32_t ip_be);            /* 判断一个 IP 是否属于�
 int control_socket_init(void);                  /* 创建并绑定 UDP 3409 socket */
 void control_socket_close(void);                /* 关闭控制 socket */
 int clock_send_on_boot(void);                   /* 开机一次性下发 0x19 时钟帧 */
+int freqtable_send_on_boot(void);               /* 开机一次性下发 0x09 频表帧（读网管 JSON，失败不致命） */
 int ctrl_get_work_status(uint8_t *dev_status, uint8_t *rf_state);  /* 取缓存中的通信设备状态与静默/辐射状态 */
 
 /* ========= 组播链路相关函数（通信设备 <-> 指挥协同计算机） ========= */
 int link_socket_init(void);                     /* 创建组播 socket 并加入本机组播组 */
 void link_socket_close(void);                   /* 关闭组播 socket */
-
-/* ========= 批次聚合相关函数 ========= */
-void batch_reset(batch_state_t *b);             /* 初始化/重置批次帧 */
-int batch_append(batch_state_t *b, const uint8_t *pkt, size_t pkt_len, uint32_t dst_ip);  /* 添加子包到批次 */
-int amp_flush_batch_if_any(batch_state_t *b);   /* 发送当前批次（如有） */
 
 int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len);  /* 构造并发送一条业务消息 */
 

@@ -9,13 +9,16 @@ SRCS = \
 	user_bcast.c \
 	user_portcfg.c \
 	user_control.c \
+	user_freqtable.c \
+	cjson/cJSON.c \
 	user_link.c
 
 OBJS = $(SRCS:.c=.o)
 
 CFLAGS = -I.
 # -I/usr/arm-linux-gnueabihf/include
-LDFLAGS = -lpthread
+LDFLAGS = -lpthread -lm
+# -lm：cJSON 内部引用 fabs 等 math 符号（部分老 glibc 中 libm 未并入 libc，链接需要）
 
 all: $(TARGET)
 

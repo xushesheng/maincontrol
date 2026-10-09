@@ -3,7 +3,7 @@
 这是一个面向 Zynq AMP 场景的主控侧跨核通信工程（驱动以 `xlnx,zynq-amp` 兼容字符串匹配，平台相关配置见目标 BSP）。当前仓库聚焦 Linux 主控侧实现，按驱动侧与用户态侧拆分为两个目录：
 
 - `amp_driver/`：Linux 内核侧 AMP IPC 驱动，负责 `/dev/amp_ipi` 业务接口、`/dev/amp_ctrl` 控制接口、共享内存与寄存器映射、SGI 中断收发，以及 CPU0 与 CPU1 之间的数据搬运。
-- `amp_user/`：Linux 用户态主控程序，负责 `rf0` TUN 设备、静态节点表路由、业务数据聚合转发、控制 UDP 报文与驱动控制通道之间的透传；近期新增了业务端口运行时配置（0x21 帧）、开机时钟下发（0x19 帧）、组播链路维护（通信设备↔指挥协同计算机）与广播二层桥接（绕开被内核 local 表架空的广播路由）等模块。
+- `amp_user/`：Linux 用户态主控程序，负责 `rf0` TUN 设备、静态节点表路由、业务数据单包转发、控制 UDP 报文与驱动控制通道之间的透传；近期新增了业务端口运行时配置（0x21 帧）、开机时钟下发（0x19 帧）、开机频表下发（0x09 帧）、组播链路维护（通信设备↔指挥协同计算机）与广播二层桥接（绕开被内核 local 表架空的广播路由）等模块。
 
 当前仓库不包含 CPU1 配套程序、完整设备树节点和目标 BSP 工程，因此它描述的是主控侧实现，而不是一套可单独脱离目标板直接运行的完整系统。
 
@@ -15,6 +15,7 @@
 - `amp_user/`：用户态源码与构建文件。
 - `bcast_test.c`：广播下发测试工具（调试用，不参与主程序构建）。从本机向 `192.168.1.255:3408` 发 UDP 广播，用于验证“本机输出路由 → rf0 → 用户态准入 → /dev/amp_ipi → node 255”链路。
 - `pkt_sniff.c`：基于 AF_PACKET 的极简抓包工具（调试用，需 root）。用于板载 busybox 无 `tcpdump` 时观察某网口（eth0/rf0）的入向/出向 IPv4 包，辅助广播与路由问题定位。
+- `freqtable_host_test.c`：`user_freqtable.c` 的主机端单测（调试用，不参与主程序构建）。验证 JSON 解析与表 5.11 组帧的正确性，可用主机 gcc 编译运行。
 
 > 注：仓库当前**不含** SNMP / AMP-MIB 代理源码（早期设计中的 `amp_user/AMPs_mib.c`、`AMPs_mib.h` 与 `AMP-MIB.txt` 未纳入本仓库），仅保留主控侧 C 实现。协议文档（`宽带无线管理软件模块交换协议`、`网管与主控通信协议` 等）亦不在仓库内，相关帧结构以代码中的注释与结构体为准。
 
@@ -26,7 +27,7 @@
 
 1. 本地 PC 发往远端 PC 的 IPv4 包进入板卡 `eth0`。
 2. 用户态程序通过 `proxy_arp`、`/32` 路由和 `rf0` TUN，把目标为对端 PC 的报文导入 `rf0`。
-3. 用户态从 `rf0` 读取报文。所有发往对端 PC 的 IPv4 包（含 TCP/ICMP 等非 UDP 协议）均进入业务通道；UDP 层面按业务端口放行（**默认 `3408`**，可由网管 0x21 帧动态调整），排除 `3409` 控制端口并过滤其余 UDP 流量。对小包进行 `AMPB` 聚合，对大包直接发送，并通过 `/dev/amp_ipi` 写给驱动。
+3. 用户态从 `rf0` 读取报文。所有发往对端 PC 的 IPv4 包（含 TCP/ICMP 等非 UDP 协议）均进入业务通道；UDP 层面按业务端口放行（**默认 `3408`**，可由网管 0x21 帧动态调整），排除 `3409` 控制端口并过滤其余 UDP 流量。每个 IP 包**单包下发**（不做小包聚合），并通过 `/dev/amp_ipi` 写给驱动。
 4. 驱动把数据写入 TX 共享区，填写目标 IP、节点号、长度等元数据，然后触发 CPU0 → CPU1 的 SGI（SGI15）。裸机 CPU1 固件实际运行在 **core 3**，驱动通过 `smp_kick_ipi(cpumask_of(3), AMP_SGI_TX)` 通知。
 5. CPU1 返回的数据写入 RX 共享区后，通过 SGI 通知 CPU0（SGI14）。
 6. 驱动把 RX 共享区数据搬入软件环形队列，用户态再从 `/dev/amp_ipi` 读出。
@@ -46,6 +47,10 @@
 
 - **业务端口配置帧 `0x21`**：网管下发新的业务 UDP 端口，主控本地解码 BCD 端口、校验范围 `[1024, 65535]` 且不冲突 `3409`/`3419`，合法则持久化到 `/etc/amp_business_port.conf` 并切换生效端口，回 `ACK(0x30)`/`NACK(0x40)`。详见「用户态关键机制 §6」。
 - **开机时钟下发帧 `0x19`**：主控启动后延迟 `CLOCK_BOOT_DELAY_SEC`(3s) 下发一次给路由（目的 ID `0x0C00` / 源 `0x0A00`，同步序列 `0xFFF5`，BCD 时间字段），带 `CLOCK_BOOT_RETRY`(10) 次重试、间隔 1s，失败不致命。
+
+**主控自主下发的控制帧（写 `/dev/amp_ctrl` 直达路由，非本地消费）：**
+
+- **开机频表下发帧 `0x09`（`user_freqtable.c`）**：启动时读取网管 jar 维护的 `lastSentFreqTable.json`（最近下发频表号）与 `freqtable.json`（频表库），按协议表 5.11 组非自适应跳频频表设置帧（频表 ID 1B BCD + 频点总数 2B BCD + 每频点[编号 2B BCD + 频率 2B BCD]；帧头同 0x19：目的 `0x0C00`/源 `0x0A00`/同步 `0xFFF5`），延迟 `FREQTABLE_BOOT_DELAY_SEC`(3s) 后写 `/dev/amp_ctrl` 下发路由，带 `FREQTABLE_BOOT_RETRY`(10) 次重试、间隔 1s。文件缺失/表不存在/无频点/超 321 点/字段超限一律 `[WARN]` 跳过，不致命；最大整帧 1300 字节。JSON 路径由 `user_config.h` 的 `FREQTABLE_LAST_SENT_FILE` / `FREQTABLE_STORE_FILE` 配置（当前为占位路径 `/opt/nms/data/`，部署时按网管 jar 实际数据目录修改）。
 
 ### 广播数据路径（user_bcast.c，绕开内核路由）
 
@@ -114,10 +119,10 @@
 ### 文件说明
 
 - `user_main.c`
-  - 用户态主入口。打开 `/dev/amp_ipi` 与 `/dev/amp_ctrl`，创建 `rf0`，载入业务端口配置，配置网关规则，初始化控制/组播/广播 socket，开机下发 0x19 时钟帧，并启动 **7 个工作线程**。
+  - 用户态主入口。打开 `/dev/amp_ipi` 与 `/dev/amp_ctrl`，创建 `rf0`，载入业务端口配置，配置网关规则，初始化控制/组播/广播 socket，开机下发 0x19 时钟帧与 0x09 频表帧，并启动 **7 个工作线程**。
 - `user_datapath.c`
   - 实现 `rf0` TUN 创建与读写。
-  - 实现业务数据发送、`AMPB` 聚合、单包直发和从驱动回读数据后的 TUN 回写。
+  - 实现业务数据单包发送（一个 IP 包一次 `amp_send_msg()`）和从驱动回读数据后的 TUN 回写。
   - 实现统一发送线程 `amp_tx_thread`（串行写 `/dev/amp_ipi`，避免并发踩 TX 单槽）。
   - 实现 TUN 入口的 UDP 业务端口准入 `classify_udp_business_port()`（与广播桥接入口共用，避免两条入口规则分叉）及准入丢弃/广播接受诊断日志。
 - `user_control.c`
@@ -135,14 +140,18 @@
   - 组播链路维护模块（通信设备 ↔ 指挥协同计算机）。按协议 `20260912` 周期发送 `0xA1`/`0xA2`/`0xA4`/`0xA5` 上行报文并接收 `0x01` 反馈维持建链/断链判定。
 - `user_bcast.c`
   - 广播二层桥接模块。用 AF_PACKET 在 `eth0` 上收发 `192.168.1.255` 二层广播，绕开内核路由（local 表架空广播路由）：上行送 `/dev/amp_ipi`（node 255），下行在 `eth0` 补发二层广播给本地 PC，并用指纹环抑制二跳回环。
+- `user_freqtable.c`
+  - 开机频表下发模块。启动时读取网管维护的两个 JSON 文件，按协议表 5.11 构造 `0x09` 非自适应跳频频表设置帧写入 `/dev/amp_ctrl`（JSON 解析基于 vendored cJSON 库，BCD 编码与 XOR 校验为本模块实现）；任何文件/数据异常均告警跳过，不致命。
+- `cjson/`
+  - 第三方库 cJSON v1.7.19 的未修改拷贝（MIT 许可，见目录内 `README.md` 与 `LICENSE`），为 `user_freqtable.c` 提供 JSON 解析；单源文件静态编入 `user_amp`，无需安装系统库。
 - `user_struct.h`
-  - 定义用户态 `amp_net_msg`、`amp_ctrl_msg`、`AMPB` 帧头和批次状态结构，以及大端字段的安全读写辅助。
+  - 定义用户态 `amp_net_msg`、`amp_ctrl_msg` 结构（批帧相关结构已随聚合功能一并移除）。
 - `user_config.h`
-  - 定义业务/控制设备名、业务/控制端口、业务端口运行时配置、批帧大小、聚合超时、发送队列深度、发送保护间隔、`rf0` MTU、广播桥接与组播链路相关配置宏。
+  - 定义业务/控制设备名、业务/控制端口、业务端口运行时配置、发送队列深度、发送保护间隔、`rf0` MTU、广播桥接、组播链路与开机频表下发（0x09）相关配置宏。
 - `user_declaration.h`
   - 汇总全局变量、业务发送队列结构、控制/组播/广播线程入口和跨文件函数声明。
 - `Makefile`
-  - 用户态程序构建文件，输出目标为 `user_amp`（7 个源文件，链接 `pthread`）。
+  - 用户态程序构建文件，输出目标为 `user_amp`（9 个源文件，链接 `pthread` 与 `math`）。
 
 ### 当前用户态关键机制
 
@@ -164,14 +173,14 @@
 - `node_id`、`board_ip`、`pc_ip` 是否存在重复。
 - 节点表为空或配置错误时程序直接退出。
 
-#### 2. 业务数据聚合与直发
+#### 2. 业务数据发送
 
 - 业务 UDP 端口默认 `3408`（见 §6，可由网管 0x21 帧动态修改），控制 UDP 端口固定 `3409`。
-- 默认最大聚合帧长度为 `640` 字节。
-- 聚合魔数为 `AMPB`，版本号为 `1`。
-- 第一个小包进入批次后，最多等待 `60 ms` 再看能否聚合更多小包。
-- 若单个包长度超过 `640` 字节，则不参与聚合，直接单包发送。
-- `ICMP Echo/Echo Reply` 默认走快速通道，尽量降低 `ping` 时延（可通过 `user_config.h` 中的 `AMP_ICMP_FASTPATH` 宏关闭）。
+- **不做小包聚合**：`tun_to_amp_thread` 从 `rf0` 读到一个 IP 包即调用 `amp_send_msg()` 下发，
+  一次 `write(/dev/amp_ipi)` 对应一个包、一次 SGI15 通知。
+  （原 `AMPB` 批帧聚合与 `ICMP` 快速通道已整体移除，接收侧也不再解析批帧。）
+- **包长上限**为 `MAX_PAYLOAD_SIZE`（`4096` 字节，与共享内存数据区一致）。
+  注意对端（CPU1 侧）的缓冲区容量需与之对齐——超出会导致数据被截断或污染共享区。
 
 #### 3. 用户态发送串行化
 
@@ -188,7 +197,7 @@
 - 关闭 `rp_filter`（all 与 eth0）
 - 打开 `eth0` 上的 `proxy_arp`
 - 拉起 `rf0`
-- 设置 `rf0` MTU 为 `1600`（大于标准 1500，以允许 >640 字节的单包直发而不触发 IP 分片）
+- 设置 `rf0` MTU 为 `1500`（`RF0_MTU`，标准以太网值）
 - 给 `rf0` 配置当前节点对应的 `10.255.0.x/24` 地址
 - 为其他节点对应的 PC 地址配置 `proxy arp`
 - 为其他节点对应的 PC 地址配置 `/32 -> rf0` 路由
@@ -241,8 +250,8 @@
 | 线程 | 职责 |
 |------|------|
 | `amp_tx_thread` | 统一写 `/dev/amp_ipi`（业务），串行化避免并发踩 TX 单槽 |
-| `tun_to_amp_thread` | `rf0` 读 IP 包 → 端口准入 → 聚合/单发 → 发送队列 |
-| `amp_to_tun_thread` | `/dev/amp_ipi` 读 → 拆 `AMPB`/原始 IP → 写回 `rf0`（含广播中继） |
+| `tun_to_amp_thread` | `rf0` 读 IP 包 → 端口准入 → 单包下发 → 发送队列 |
+| `amp_to_tun_thread` | `/dev/amp_ipi` 读 → 写回 `rf0`（含广播中继） |
 | `control_rx_to_amp_thread` | UDP 3409 → 0x21 本地消费 / 其余透传 `/dev/amp_ctrl` |
 | `control_amp_to_udp_thread` | `/dev/amp_ctrl` → 缓存上报帧 → UDP 3419 |
 | `link_mcast_thread` | 组播链路维护（检测/状态报文发送与反馈接收） |
@@ -268,17 +277,6 @@
 - `data_type`：控制类型字段；当前阶段固定写 `1`
 - `data[]`：完整控制帧载荷，最大 `4096` 字节
 
-### `AMPB` 批帧
-
-用户态业务聚合使用 `AMPB` 批帧格式：
-
-- 魔数：`AMPB`
-- 版本：`1`
-- 标志位：当前固定为 `0`
-- 子包数量：大端格式（`count_be`，`#pragma pack(1)` 12 字节帧头）
-- 批帧序号：大端格式（`seq_be`）
-- 每个子包前带 `2` 字节大端长度字段
-
 ## 构建说明
 
 ### 用户态构建
@@ -294,7 +292,7 @@ make
 
 - `user_amp`
 
-用户态 `Makefile` 当前使用 **`aarch64-linux-gnu-gcc`**（FMQLMP-Linux-SDK-Prj-20250408 工具链，ARM64），源文件为 7 个 `.c`（`user_main` / `user_gateway` / `user_datapath` / `user_bcast` / `user_portcfg` / `user_control` / `user_link`），链接 `pthread`。
+用户态 `Makefile` 当前使用 **`aarch64-linux-gnu-gcc`**（FMQLMP-Linux-SDK-Prj-20250408 工具链，ARM64），源文件为 9 个 `.c`（`user_main` / `user_gateway` / `user_datapath` / `user_bcast` / `user_portcfg` / `user_control` / `user_freqtable` / `cjson/cJSON` / `user_link`），链接 `pthread` 与 `math`（`-lm`，cJSON 引用 `fabs`）。
 
 ### 驱动侧构建
 

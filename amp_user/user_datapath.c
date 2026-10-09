@@ -14,7 +14,6 @@
 #include <linux/if.h>              /* IFNAMSIZ / struct ifreq */
 #include <linux/if_tun.h>          /* TUN 设备 ioctl（TUNSETIFF / IFF_TUN） */
 #include <netinet/ip.h>            /* struct iphdr（IP 头结构） */
-#include <netinet/ip_icmp.h>       /* struct icmphdr（ICMP 头结构） */
 #include <netinet/udp.h>           /* struct udphdr（UDP 头结构） */
 
 #include "user_declaration.h"      /* 全局变量、类型、函数声明 */
@@ -233,117 +232,6 @@ int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
     return 0;
 }
 
-/************
-*初始化聚合帧
-************/
-void batch_reset(batch_state_t *b)               //传入一个批次帧结构体
-{
-    uint32_t seq = b->seq;                       //定义赋值批帧序号
-    amp_batch_hdr_t hdr;                         //定义帧头结构体
-    memset(b, 0, sizeof(*b));                    //初始化帧结构体
-    b->seq = seq;
-
-    memset(&hdr, 0, sizeof(hdr));                //初始化帧头结构体
-    memcpy(hdr.magic, AMP_BATCH_MAGIC, 4);       //初始化批次魔数AMPB
-    hdr.version = AMP_BATCH_VERSION;             //初始化版本
-    hdr.flags = 0;                               //初始化标识为0
-    hdr.count_be = htons(0);                     //初始化子包数量为0
-    hdr.seq_be = htonl(b->seq);                  //初始化头序号为帧序号
-
-    memcpy(b->buf, &hdr, sizeof(hdr));           //把帧头放入帧结构体首部buf中
-    b->len = sizeof(hdr);                        //帧长度为帧头长度
-    b->count = 0;                                //初始化已写入子包数
-    b->dst_ip = 0;                               //初始化当前批次目的地地址
-}
-
-/***********************
-*把新数据帧pkt添加到当前批次聚合帧
-***********************/
-int batch_append(batch_state_t *b, const uint8_t *pkt, size_t pkt_len, uint32_t dst_ip)
-{
-    if (pkt_len > 0xFFFF)   //如果长度超长返回-1
-        return -1;
-    if (b->len + 2 + pkt_len > AMP_BATCH_MAX_BYTES)
-        return -2;  //如果核算长度超出640B返回-2
-
-    if (b->count == 0)  //如果经过以上筛选，且核算长度不为零
-        b->dst_ip = dst_ip; //将聚合帧结构体的目的地地址赋值为传入的目的地地址
-
-    write_be16_unaligned(b->buf + b->len, (uint16_t)pkt_len);   //将传入的长度写入buf的末尾位置
-    b->len += 2;    //聚合帧结构体的长度+2
-    memcpy(b->buf + b->len, pkt, pkt_len);  //将传入的数据写到聚合帧buf的末尾
-    b->len += pkt_len;  //聚合帧长度加上pkt的长度
-    b->count++; //聚合帧子包数量+1
-    write_be16_unaligned(b->buf + offsetof(amp_batch_hdr_t, count_be), b->count);   //buf的地址加上count_be的偏移量，改写帧头的子包数量
-    write_be32_unaligned(b->buf + offsetof(amp_batch_hdr_t, seq_be), b->seq);       //改写帧头的序号
-    return 0;
-}
-
-/**********************
- *发送当前批次的所有数据
- ********************/
-int amp_flush_batch_if_any(batch_state_t *b)
-{
-    int rc = 0;
-
-    if (b->count == 0)
-        return 0;
-
-    /* 如果批次里只有 1 个子包，为减少头开销，直接发原始 IP 包 */
-    if (b->count == 1) {
-        size_t off = sizeof(amp_batch_hdr_t);   //帧头大小赋值给off
-        uint16_t l;
-
-        if (b->len < off + 2) {                 //如果帧长度小于帧头结构体大小+2字节子包长度字段，表示为空包或异常
-            batch_reset(b);                     //初始化帧
-            return -1;
-        }
-
-        l = read_be16_unaligned(b->buf + off);  //读取帧头末尾的2字节唯一子包长度字段赋值给l
-        if (off + 2 + l > b->len) {             //如果帧长度<帧头结构体大小+子包长度，即长度不对应
-            batch_reset(b);                     //直接放弃当前批次,初始化一个新批次
-            return -1;
-        }
-
-        rc = amp_send_msg(b->dst_ip, b->buf + off + 2, l); //跳过帧头和长度字节，直接把子包发出去
-        b->seq++;   //批次序号+1
-        batch_reset(b);
-        return rc;
-    }
-
-    rc = amp_send_msg(b->dst_ip, b->buf, b->len);  //把头和所有子包（即整个buf部分）一起原样发出
-    b->seq++;
-    batch_reset(b);
-    return rc;
-}
-
-
-/**********************
-*   ping包判断函数    *
-**********************/
-static int is_ping_or(const uint8_t *pkt, size_t len)
-{
-    const struct iphdr *ip;
-    size_t ihl;
-    const struct icmphdr *ic;
-
-    if (len < sizeof(struct iphdr))
-        return 0;
-
-    ip = (const struct iphdr *)pkt;
-    if (ip->version != 4)
-        return 0;
-
-    ihl = (size_t)ip->ihl * 4;
-    if (ihl < sizeof(struct iphdr) || len < ihl + sizeof(struct icmphdr))
-        return 0;
-    if (ip->protocol != IPPROTO_ICMP)
-        return 0;
-
-    ic = (const struct icmphdr *)(pkt + ihl);
-    return ic->type == ICMP_ECHO || ic->type == ICMP_ECHOREPLY;    //包类型为ICMP请求或应答返回1，否则返回0
-}
-
 /* 对UDP业务做端口分流：
  * g_business_port（默认 3408，可由网管下发配置帧修改）进入业务面；
  * 3409 保留给独立控制面，不进入TUN业务通道；
@@ -387,21 +275,18 @@ int classify_udp_business_port(const uint8_t *pkt, size_t len)
 
 /************************************************************* * 
 * 线程1：从TUN读取需要“跨射频”的IP包，写入驱动（-> CPU1 -> 对端）*
+* 注：不做小包聚合，每个 IP 包单独下发（一包一次 write(/dev/amp_ipi) + 一次 SGI15）*
  ***************************************************************/
 void *tun_to_amp_thread(void *arg)
 {
     uint8_t buf[MAX_PAYLOAD_SIZE];
-    batch_state_t batch;	            //准备一个空批次帧
 
     (void)arg;
-    memset(&batch, 0, sizeof(batch));   //清零当前批次帧数据
-    batch_reset(&batch);                //初始化批次帧
     (void)set_nonblock(tun_fd);
 
     while (g_running) {
-        int timeout_ms = (batch.count == 0) ? -1 : AMP_BATCH_TIMEOUT_MS;    //batch 为空：timeout=-1;batch非空：timeout=60
-        struct pollfd pfd = { .fd = tun_fd, .events = POLLIN };             //初始化poll阻塞，设置标识符为tun_fd,events为pollin可读
-        int prc = poll(&pfd, 1, timeout_ms);        //阻塞pfd标识timeout_ms时间
+        struct pollfd pfd = { .fd = tun_fd, .events = POLLIN };   //初始化poll阻塞，设置标识符为tun_fd,events为pollin可读
+        int prc = poll(&pfd, 1, -1);                              //无限阻塞：只在 TUN 可读时唤醒
 
         if (prc < 0) {
             if (errno == EINTR)
@@ -410,22 +295,12 @@ void *tun_to_amp_thread(void *arg)
             break;
         }
 
-        if (prc == 0) {                      //表示pfd中tun_fd没有准备好读写或出错，当poll阻塞超时timeout
-            /* 聚合窗口超时：发掉当前批次 */
-            (void)amp_flush_batch_if_any(&batch);
-            continue;
-        }
-
-        /* 尽可能把当前可读的数据读空（non-blocking），提高聚合命中率 */
+        /* 尽可能把当前可读的数据读空（non-blocking） */
         while (1) {
             ssize_t n = read(tun_fd, buf, sizeof(buf));         //从tun中取一个IP包
             struct iphdr *ip;
             size_t pkt_len;
             uint32_t dst_ip;
-            int udp_class;
-            int is_ping;
-            size_t agg_overhead;
-            int rc;
 
             if (n < 0) {                            //取出失败报错
                 if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -450,77 +325,23 @@ void *tun_to_amp_thread(void *arg)
 
             pkt_len = (size_t)n;      //定义pkt_len设置为本条IP包长度
             dst_ip = ip->daddr;       //定义dst_ip赋值为当前IP包目的地址
-            udp_class = classify_udp_business_port(buf, pkt_len);
 
-            if (udp_class < 0) {
+            if (classify_udp_business_port(buf, pkt_len) < 0) {
                 continue;
             }
 
-#if AMP_ICMP_FASTPATH   //是否开启ICMP包快速通道
-            is_ping = is_ping_or(buf, pkt_len); //判断是否为ping包，是的话置is_ping为1
-#else
-            is_ping = 0;
-#endif
-
-            /* ====== 解除单包 640B 限制：>640 直接单包直发 ====== */
-            if (pkt_len > AMP_BATCH_MAX_BYTES) {            //如果当前包超过640B
-                (void)amp_flush_batch_if_any(&batch);       //则先将之前存的batch发出
-                (void)amp_send_msg(dst_ip, buf, pkt_len);   //再单独将本批次的IP包写入
-                continue;
-            }
-
-            /* 对于 <=640 的包，仍要考虑批帧头/长度字段的开销：塞不进批帧就单包直发 */
-            agg_overhead = sizeof(amp_batch_hdr_t) + 2;             /* 若批帧为空，只装一个子包的最小开销（包长+2） */
-            if (pkt_len + agg_overhead > AMP_BATCH_MAX_BYTES) {     //如果当前IP包长度加上另一最小帧大于640依旧
-                (void)amp_flush_batch_if_any(&batch);               //则先将之前存的batch发出
-                (void)amp_send_msg(dst_ip, buf, pkt_len);           //再单独将本批次的IP包写入
-                continue;
-            }
-
-            /* ping 快速通道：不等待聚合窗口。
-             * 优先尝试把 ping 塞进当前批次，然后立刻 flush（尽量不额外增加 SGI 次数）。 */
-            if (is_ping) {
-                int appended = 0;       //定义添加标识
-                if (batch.count == 0 || batch.dst_ip == dst_ip) {           //如果当前序列为空或者batch的目的IP与ping包一致
-                    if (batch_append(&batch, buf, pkt_len, dst_ip) == 0)    //如果添加成功
-                        appended = 1;   //添加标识置为1
-                }
-
-                if (!appended) {        //如果添加标识还是0代表上一个if中添加ping包失败
-                    (void)amp_flush_batch_if_any(&batch);
-                    (void)amp_send_msg(dst_ip, buf, pkt_len);
-                } else {
-                    (void)amp_flush_batch_if_any(&batch);   //如果前面添加成功，则直接发出整个batch
-                }
-                continue;
-            }
-
-            /* 普通小包：按目的IP聚合。
-             * 若目的IP改变，先 flush 再开始新批次。 */
-            if (batch.count > 0 && batch.dst_ip != dst_ip)  //当前IP包目的IP如果与存的batch不同
-                (void)amp_flush_batch_if_any(&batch);       //则先发出存的batch
-
-            rc = batch_append(&batch, buf, pkt_len, dst_ip);    //赋值rc为添加IP包进入batch函数的返回值
-            if (rc == -2) {
-                /* 空间不足：先 flush 再试一次；若还是不行就单包直发 */
-                (void)amp_flush_batch_if_any(&batch);
-                rc = batch_append(&batch, buf, pkt_len, dst_ip);
-                if (rc != 0)
-                    (void)amp_send_msg(dst_ip, buf, pkt_len);    //再次添加失败，则单独发送一次当前IP包
-            } else if (rc != 0) {
-                (void)amp_flush_batch_if_any(&batch);
-                (void)amp_send_msg(dst_ip, buf, pkt_len);
-            }
+            /* 不做聚合：直接单包下发 */
+            (void)amp_send_msg(dst_ip, buf, pkt_len);
         }
     }
 
 out:
-    (void)amp_flush_batch_if_any(&batch);       //退出循环时发出当前批次帧
     return NULL;
 }
 
 /**************************************************************************** 
 * 线程2：从驱动read()取出对端发来的IP包，写回TUN，让内核继续路由到eth0发给本地PC *
+* 注：线上只跑裸 IP 包（已取消 AMPB 批帧），读到即整包写回 TUN                    *
 *****************************************************************************/
 void *amp_to_tun_thread(void *arg)
 {
@@ -558,42 +379,12 @@ void *amp_to_tun_thread(void *arg)
         }
         /* 当前 /dev/amp_ipi RX 路径只回传业务数据 */
 
-        /* 兼容：
-         * - AMPB：拆包写回 TUN
-         * - 否则：按单个原始 IP 包写回 TUN */
-		//判断如果是 AMPB 批帧
-        if (msg.len >= sizeof(amp_batch_hdr_t) && memcmp(msg.data, AMP_BATCH_MAGIC, 4) == 0) {
-            const amp_batch_hdr_t *hdr = (const amp_batch_hdr_t *)msg.data;     //把数据头指向批次帧数据部分准备解析
-            uint16_t count;
-            size_t off;
-            uint16_t i;
-
-            if (hdr->version != AMP_BATCH_VERSION)
-                continue;
-
-            count = ntohs(hdr->count_be);       //网络序子包数量转换成主机序子包数量count
-            off = sizeof(amp_batch_hdr_t);      //off赋值为聚合帧头长度
-            for (i = 0; i < count; i++) {
-                uint16_t zl;       //2字节子帧长度位
-
-                if (off + 2 > msg.len)          //如果聚合帧头长度off加上2字节长度超过了msg长度则退出循环(防越界)
-                    break;
-                zl = read_be16_unaligned(msg.data + off);    //（从msg.data + off地址往后读2个字节）赋值给zl表示这一子帧长度
-                off += 2;               //把读指针往后挪 2 个字节：跳过刚才读掉的长度字段，指向真正的包内容起始
-                if (off + zl > msg.len) //检查：缓冲区里剩下的字节是否足够放下一个完整子包
-                    break;
-                if (tun_write_packet(tun_fd, msg.data + off, zl) != 0)
-                    perror("write(tun)");
-                /* 广播包：内核对此只会做本地投递、不会从 eth0 发出（详见 user_bcast.c 顶部说明），
-                 * 因此由用户态在 eth0 上补发一份二层广播，本地 PC 才收得到 */
-                bcast_maybe_relay(msg.data + off, zl);
-                off += zl;
-            }
-        } else {        //否则就是单包IP包，直接整个写回TUN
-            if (tun_write_packet(tun_fd, msg.data, msg.len) != 0)
-                perror("write(tun)");
-            bcast_maybe_relay(msg.data, msg.len);
-        }
+        /* 线上只跑裸 IP 包（已取消 AMPB 批帧）：直接整个写回 TUN
+         * 广播包：内核对此只会做本地投递、不会从 eth0 发出（详见 user_bcast.c 顶部说明），
+         * 因此由用户态在 eth0 上补发一份二层广播，本地 PC 才收得到 */
+        if (tun_write_packet(tun_fd, msg.data, msg.len) != 0)
+            perror("write(tun)");
+        bcast_maybe_relay(msg.data, msg.len);
     }
 
     return NULL;
