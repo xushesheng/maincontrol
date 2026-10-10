@@ -233,8 +233,10 @@ int amp_send_msg(uint32_t dst_ip, const uint8_t *payload, size_t len)
 }
 
 /* 对UDP业务做端口分流：
- * g_business_port（默认 3408，可由网管下发配置帧修改）进入业务面；
- * 3409 保留给独立控制面，不进入TUN业务通道；
+ * UDP 源/目的端口任一落在业务端口区间 [下限, 上限] 内即进入业务面
+ * （区间默认 3380~3480，可由网管下发 0x22 配置帧修改并持久化）；
+ * 3409/3419 保留给独立控制面（指令入口/回执出口），无论业务区间
+ * 怎么配置都在此处"挖洞"优先排除，不进入TUN业务通道；
  * 其他UDP流量当前不进入AMP业务面。
  * 注意：非 static —— 广播桥接入口（user_bcast.c 抓到的 eth0 二层广播）复用同一份策略，
  * 保证"TUN 入口"与"广播桥接入口"的准入规则不会分叉。 */
@@ -245,7 +247,9 @@ int classify_udp_business_port(const uint8_t *pkt, size_t len)
     const struct udphdr *udp;
     uint16_t src_port;
     uint16_t dst_port;
-    uint16_t biz_port;
+    uint32_t range_snapshot;    /* 业务区间打包值的一次快照 */
+    uint16_t biz_min;
+    uint16_t biz_max;
 
     if (len < sizeof(struct iphdr))
         return 0;
@@ -262,13 +266,23 @@ int classify_udp_business_port(const uint8_t *pkt, size_t len)
     src_port = ntohs(udp->source);
     dst_port = ntohs(udp->dest);
 
-    if (src_port == CONTROL_PORT || dst_port == CONTROL_PORT)
+    /* "挖洞"：控制端口优先于业务区间排除。
+     * 3409 是网管指令入口，3419 是控制回执出口——即便业务区间把这两个
+     * 端口覆盖在内（如默认区间 3380~3480），控制面流量也不会被吸进业务面 */
+    if (src_port == CONTROL_PORT || dst_port == CONTROL_PORT ||
+        src_port == CONTROL_REPORT_PORT || dst_port == CONTROL_REPORT_PORT)
         return -1;
 
-    /* 先取一次快照再比较：配置线程可能在两次比较之间改写业务端口，
-     * 取快照可保证同一个包的前后判断基于同一个端口值，不会自相矛盾 */
-    biz_port = g_business_port;
-    if (src_port == biz_port || dst_port == biz_port)
+    /* 先取一次快照再比较：配置线程可能在判断过程中改写业务区间。
+     * g_business_range 是 32 位打包值（下限<<16|上限），对齐读写在
+     * ARM64 上天然原子，一次快照即可同时取到配套的下限/上限，
+     * 不会出现"新下限+旧上限"的撕裂区间 */
+    range_snapshot = g_business_range;
+    biz_min = biz_range_min(range_snapshot);
+    biz_max = biz_range_max(range_snapshot);
+
+    if ((src_port >= biz_min && src_port <= biz_max) ||
+        (dst_port >= biz_min && dst_port <= biz_max))
         return 1;
     return -1;
 }

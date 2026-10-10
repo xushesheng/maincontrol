@@ -12,17 +12,23 @@
 #define MAX_PAYLOAD_SIZE 4096              /* 最大载荷大小（与驱动侧一致） */
 
 /* ========= UDP 端口号定义 ========= */
-#define BUSINESS_PORT 3408                  /* 业务 UDP 端口：数据走此端口进入 AMP 通道（默认值，配置文件缺失或非法时回落至此） */
+/* 业务端口为"准入区间"：UDP 源/目的端口任一落在 [下限, 上限] 内即进入业务面（见
+ * user_datapath.c 的 classify_udp_business_port）。下述默认区间在配置文件缺失或
+ * 非法时回落使用；运行中可由网管下发 0x22 配置帧改写并持久化。 */
+#define BUSINESS_PORT_DEFAULT_MIN 3380        /* 业务 UDP 端口区间下限（默认值） */
+#define BUSINESS_PORT_DEFAULT_MAX 3480        /* 业务 UDP 端口区间上限（默认值） */
 #define CONTROL_PORT 3409                   /* 控制 UDP 端口：网管指令走此端口 */
 #define CONTROL_REPORT_PORT 3419            /* 控制回执端口：CPU1 上报转发至此端口 */
 
 /* ========= 业务端口运行时配置（网管下发，主控本地消费，不透传 CPU1） ========= */
-#define CTRL_FRAME_TYPE_BUSINESS_PORT 0x21  /* 网管下发业务端口配置帧的类型码 */
-#define BUSINESS_PORT_FRAME_LEN 16          /* 端口配置帧总长：12 字节帧头 + 3 字节 BCD + 1 字节校验和 */
-#define BUSINESS_PORT_BCD_BYTES 3           /* 端口 BCD 编码字节数：3 字节 = 6 位十进制 */
-#define AMP_PORT_CONF_FILE "/etc/amp_business_port.conf"  /* 业务端口持久化配置文件路径 */
-#define BUSINESS_PORT_MIN 1024              /* 合法业务端口下限：避开特权端口与常见服务端口 */
-#define BUSINESS_PORT_MAX 65535             /* 合法业务端口上限 */
+/* 依据《无线宽带网管与组网主控通信协议》表 5.26「业务数据端口号下发」：
+ * 类型码 0x22，数据域 = 起始端口号 3B BCD + 结尾端口号 3B BCD（高位在前）。*/
+#define CTRL_FRAME_TYPE_BUSINESS_PORT 0x22  /* 网管下发业务端口区间配置帧的类型码（协议表 5.26） */
+#define BUSINESS_PORT_FRAME_LEN 19          /* 端口配置帧总长：12 字节帧头 + 6 字节 BCD（两端口各 3）+ 1 字节校验和 */
+#define BUSINESS_PORT_BCD_BYTES 3           /* 单个端口的 BCD 编码字节数：3 字节 = 6 位十进制（起始/结尾各一组） */
+#define AMP_PORT_CONF_FILE "/etc/amp_business_port.conf"  /* 业务端口持久化配置文件路径（存"下限 上限"两个数） */
+#define BUSINESS_PORT_RANGE_MIN 1024         /* 合法业务端口下限：避开特权端口与常见服务端口 */
+#define BUSINESS_PORT_RANGE_MAX 65535        /* 合法业务端口上限 */
 
 /* 业务数据统一串行下发到驱动，避免并发踩写 TX 单槽 */
 #define  AMP_TX_QUEUE_DEPTH 64
@@ -51,9 +57,9 @@
 
 /* ========= 开机自启动频表下发（协议 表5.11，类型 0x09，见 user_freqtable.c） ========= */
 #define CTRL_FRAME_TYPE_FREQTABLE   0x09    /* 主控开机下发非自适应跳频频表设置帧 */
-#define FREQTABLE_LAST_SENT_FILE "/data/lastSentFreqTable.json"  /* 网管 jar 数据目录：最近下发频表号（占位路径，部署时按实际 data 目录修改） */
-#define FREQTABLE_STORE_FILE     "/data/freqtable.json"         /* 网管 jar 数据目录：频表库（占位路径，部署时按实际 data 目录修改） */
-#define FREQTABLE_BOOT_DELAY_SEC    3       /* 组帧成功后延迟若干秒再发，等路由固件就绪（与 0x19 同款） */
+#define FREQTABLE_LAST_SENT_FILE "root/wangguan/data/lastSentFreqTable.json"  /* 网管 jar 数据目录：最近下发频表号（占位路径，部署时按实际 data 目录修改） */
+#define FREQTABLE_STORE_FILE     "root/wangguan/data/freqtable.json"         /* 网管 jar 数据目录：频表库（占位路径，部署时按实际 data 目录修改） */
+#define FREQTABLE_BOOT_DELAY_SEC    5       /* 组帧成功后延迟若干秒再发，等路由固件就绪（与 0x19 同款） */
 #define FREQTABLE_BOOT_RETRY        10      /* 写 /dev/amp_ctrl 失败最多重试次数 */
 #define FREQTABLE_BOOT_RETRY_GAP_SEC 1      /* 重试间隔（秒） */
 #define FREQTABLE_TABLE_ID_MAX      99      /* 频表号上限（1 字节 BCD：0~99） */
@@ -120,6 +126,7 @@
 #define LINK_FRAME_LEN_WORK     14              /* 工作状态报文 0xA4 */
 #define LINK_FRAME_LEN_MODE_ACK 14              /* 工作模式反馈报文 0xA5 */
 #define LINK_FRAME_LEN_FEEDBACK 13              /* 通信状态检测反馈报文 0x01 */
+#define LINK_FRAME_LEN_TIME     22              /* 时间信息报文 0x02 */
 
 /* 发送周期（协议 20260912 已将原"1ms"统一修正为 1s） */
 #define LINK_PERIOD_MS          1000            /* 基础节拍：1s */
@@ -132,5 +139,11 @@
 #define LINK_RF_SILENT          0x00            /* 静默/辐射状态（工作状态）：静默 */
 #define LINK_RF_RADIATE         0x01            /* 静默/辐射状态（工作状态）：辐射 */
 #define LINK_DEV_ENABLED        0xAA            /* 通信设备启用状态（工作模式反馈）：启用 */
+
+/* ---- 下行 0x02 时间信息报文：系统时间同步（见 user_link.c） ---- */
+#define LINK_TIME_SYNC_PERIOD_MS 60000          /* 校时节流：首次立即，之后每 60s 最多一次 */
+#define LINK_TIME_BDT_OFFSET_SEC 4              /* BDT(北斗时) = TAI-33s，2026 年 TAI-UTC=37s ⇒ BDT = UTC + 4s，故 UTC = BDT - 4 */
+#define LINK_TIME_HWCLK_SYNC     1              /* 1=校时后额外写硬件 RTC；0=只改系统时钟 */
+#define LINK_TIME_HWCLK_CMD      "hwclock --systohc"  /* busybox 若不支持长选项则改成 "hwclock -w" */
 
 #endif

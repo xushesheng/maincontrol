@@ -565,6 +565,42 @@ int clock_send_on_boot(void)
     return -1;
 }
 
+/******************************************************
+ *  立即下发一帧 0x19 时钟帧（供 0x02 时间报文回调）     *
+ *  与 clock_send_on_boot() 的区别：                     *
+ *    无 CLOCK_BOOT_DELAY_SEC 延时、无失败重试           *
+ *  ⚠ build_clock_frame() 取的是调用瞬间的 time(NULL)，  *
+ *    因此调用方必须在 settimeofday() 成功之后再调本函数， *
+ *    否则 0x19 携带的还是校时前的旧时间。                *
+ *  返回 0 成功，<0 失败（调用方只告警，不重试）。         *
+ ******************************************************/
+int clock_send_now(void)
+{
+    uint8_t frame[20];
+    size_t flen;
+    struct amp_ctrl_msg msg;
+    size_t msg_bytes;
+
+    if (build_clock_frame(frame, &flen) != 0) {
+        fprintf(stderr, "[ERROR] build clock frame(0x19) failed\n");
+        return -1;
+    }
+
+    memset(&msg, 0, sizeof(msg));
+    msg.len = (uint32_t)flen;
+    msg.data_type = 1;
+    memcpy(msg.data, frame, flen);
+    msg_bytes = offsetof(struct amp_ctrl_msg, data) + flen;
+
+    if (write_ctrl_msg(&msg, msg_bytes) != 0) {
+        fprintf(stderr, "[WARN] clock frame(0x19) send failed (no retry)\n");
+        return -1;
+    }
+
+    fprintf(stderr, "[INFO] clock frame(0x19) sent to router\n");
+    return 0;
+}
+
 /******************************************
  *      创建socket并绑定本地 UDP 3409     *
  ****************************************/
@@ -636,6 +672,31 @@ static uint16_t bcd_dec_byte(uint8_t b)
         return 0xFFFF;      /* 非法 BCD：交给调用方判错 */
 
     return (uint16_t)(hi * 10 + lo);
+}
+
+/***************************************
+ *  3 字节 BCD 端口解码（高位字节在前）   *
+ *  3380 -> 00 33 80。                  *
+ *  非法 BCD 或超出 uint16_t 表示范围    *
+ *  返回 0xFFFFFFFF，由调用方判错        *
+ ***************************************/
+static uint32_t bcd_decode_port3(const uint8_t *p)
+{
+    uint32_t acc = 0;      /* BCD 逐字节累加结果 */
+    uint16_t digit;        /* 单个 BCD 字节解码出的两位十进制数 */
+    int i;
+
+    for (i = 0; i < BUSINESS_PORT_BCD_BYTES; i++) {
+        digit = bcd_dec_byte(p[i]);
+        if (digit == 0xFFFF)           /* 非法 BCD：标记为失败并跳出 */
+            return 0xFFFFFFFFu;
+        acc = acc * 100u + digit;
+    }
+
+    /* 3 字节 BCD 最多表示 999999，超出 uint16_t 端口范围即为非法 */
+    if (acc > 0xFFFFu)
+        return 0xFFFFFFFFu;
+    return acc;
 }
 
 /***************************************
@@ -717,17 +778,16 @@ void *control_rx_to_amp_thread(void *arg)
             continue;
         }
 
-        /* 业务端口配置帧（0x21）：主控本地消费，不透传给路由固件。
+        /* 业务端口区间配置帧（0x22，协议表 5.26）：主控本地消费，不透传给路由固件。
+         * 数据域 = 起始端口号 3B BCD + 结尾端口号 3B BCD（高位在前）。
          * 其余所有类型一律保持原有行为，原样写入 /dev/amp_ctrl 转发给 CPU1。 */
         if (buffer[10] == CTRL_FRAME_TYPE_BUSINESS_PORT) {
-            uint16_t new_port;              /* 从 BCD 解码出来的新业务端口 */
-            uint16_t digit;                 /* 单个 BCD 字节解码出的两位十进制数 */
-            uint32_t acc;                   /* BCD 逐字节累加结果 */
-            int i;
+            uint32_t acc_min;             /* BCD 解码出的区间下限 */
+            uint32_t acc_max;             /* BCD 解码出的区间上限 */
 
-            /* 帧长必须是 16 字节：12 字节帧头 + 3 字节 BCD + 1 字节校验和。
+            /* 帧长必须是 19 字节：12 字节帧头 + 6 字节 BCD（两端口各 3）+ 1 字节校验和。
              * 校验和已由 ctrl_frame_is_valid 验过，这里再判长度是为了
-             * 防止短帧越界读到 buffer[13] / buffer[14]。 */
+             * 防止短帧越界读到 buffer[15..17]。 */
             if ((size_t)rx_len < BUSINESS_PORT_FRAME_LEN) {
                 fprintf(stderr, "[WARN] business-port frame too short: %zd < %d\n",
                         rx_len, BUSINESS_PORT_FRAME_LEN);
@@ -735,32 +795,24 @@ void *control_rx_to_amp_thread(void *arg)
                 continue;
             }
 
-            /* 3 字节 BCD，高位在前：3408 -> 00 34 08 */
-            acc = 0;
-            for (i = 0; i < BUSINESS_PORT_BCD_BYTES; i++) {
-                digit = bcd_dec_byte(buffer[12 + i]);
-                if (digit == 0xFFFF) {          /* 非法 BCD：标记为失败并跳出 */
-                    acc = 0xFFFFFFFFu;
-                    break;
-                }
-                acc = acc * 100u + digit;
-            }
+            /* 3 字节 BCD，高位在前：3380 -> 00 33 80；3480 -> 00 34 80 */
+            acc_min = bcd_decode_port3(buffer + 12);
+            acc_max = bcd_decode_port3(buffer + 15);
 
-            if (acc == 0xFFFFFFFFu || acc > BUSINESS_PORT_MAX) {
+            if (acc_min == 0xFFFFFFFFu || acc_max == 0xFFFFFFFFu) {
                 fprintf(stderr, "[WARN] business-port frame carries invalid BCD port\n");
                 portcfg_send_reply(CTRL_FRAME_TYPE_NACK);
                 continue;
             }
-            new_port = (uint16_t)acc;
 
-            /* 应用并持久化：越界或撞 3409/3419 都会失败，回 NACK */
-            if (portcfg_apply_and_save(new_port) != 0) {
+            /* 应用并持久化：两端越界 [1024, 65535] 或下限 > 上限都会失败，回 NACK */
+            if (portcfg_apply_and_save((uint16_t)acc_min, (uint16_t)acc_max) != 0) {
                 portcfg_send_reply(CTRL_FRAME_TYPE_NACK);
                 continue;
             }
 
-            fprintf(stderr, "[INFO] business port updated to %u by network manager\n",
-                    (unsigned)new_port);
+            fprintf(stderr, "[INFO] business port range updated to [%u, %u] by network manager\n",
+                    acc_min, acc_max);
             portcfg_send_reply(CTRL_FRAME_TYPE_ACK);
             continue;                           /* 关键：不 write(ctrl_fd)，到此为止 */
         }

@@ -17,13 +17,28 @@ extern int tun_fd;              /* TUN 虚拟网卡 rf0 文件描述符 */
 extern volatile int g_running;  /* 全局运行标志：0 表示退出，所有线程检查此标志 */
 
 /* ========= 业务端口运行时配置 ========= */
-/* 当前生效的业务 UDP 端口，默认取 BUSINESS_PORT。
- * 写方：control_rx_to_amp_thread 收到网管 0x21 配置帧后改写；
- * 读方：tun_to_amp_thread 的端口过滤判断。单写单读，故仅用 volatile，不加锁。 */
-extern volatile uint16_t g_business_port;
+/* 当前生效的业务 UDP 端口区间，打包为单个 32 位值：(下限 << 16) | 上限。
+ * 默认取 BUSINESS_PORT_DEFAULT_MIN/MAX（3380/3480）。
+ * 写方：control_rx_to_amp_thread 收到网管 0x22 配置帧（协议表 5.26）后改写；
+ * 读方：tun_to_amp_thread 与广播桥接入口共用的端口过滤判断。
+ * 打包成 32 位的目的：对齐的 32 位读写在 ARM64 上天然原子，读取方一次快照即可
+ * 同时取到下限/上限，不会出现"读到新下限+旧上限"的撕裂状态；
+ * 单写多读，故仅用 volatile，不加锁。 */
+extern volatile uint32_t g_business_range;
 
-int portcfg_load(void);                     /* 启动时从配置文件载入端口；文件缺失或非法时保持默认值并返回 -1 */
-int portcfg_apply_and_save(uint16_t port);  /* 校验并持久化端口；成功返回 0，失败返回 -1 且不改写当前生效值 */
+/* 从打包的区间值中解出下限/上限 */
+static inline uint16_t biz_range_min(uint32_t range)
+{
+    return (uint16_t)(range >> 16);
+}
+
+static inline uint16_t biz_range_max(uint32_t range)
+{
+    return (uint16_t)(range & 0xFFFFu);
+}
+
+int portcfg_load(void);                     /* 启动时从配置文件载入端口区间；文件缺失或非法时保持默认值并返回 -1 */
+int portcfg_apply_and_save(uint16_t port_min, uint16_t port_max);  /* 校验并持久化端口区间；成功返回 0，失败返回 -1 且不改写当前生效值 */
 
 /* ========= 发送队列相关类型 ========= */
 typedef struct {
@@ -60,6 +75,7 @@ int is_peer_pc_addr(uint32_t ip_be);            /* 判断一个 IP 是否属于�
 int control_socket_init(void);                  /* 创建并绑定 UDP 3409 socket */
 void control_socket_close(void);                /* 关闭控制 socket */
 int clock_send_on_boot(void);                   /* 开机一次性下发 0x19 时钟帧 */
+int clock_send_now(void);                       /* 立即下发一帧 0x19 时钟帧（无延时、无重试），供 0x02 时间报文回调 */
 int freqtable_send_on_boot(void);               /* 开机一次性下发 0x09 频表帧（读网管 JSON，失败不致命） */
 int ctrl_get_work_status(uint8_t *dev_status, uint8_t *rf_state);  /* 取缓存中的通信设备状态与静默/辐射状态 */
 

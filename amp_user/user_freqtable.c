@@ -128,7 +128,7 @@ static int ft_parse_last_sent(const char *buf, size_t len, long *table_id)
     long v;
     int ok = 0;
 
-    /* 防 UTF-8 BOM：cJSON 不接受 BOM 前缀（Jackson 不写，但手工编辑可能带入） */
+    /* 防 UTF-8 BOM：cJSON 不接受 BOM 前缀 */
     if (len >= 3 && (unsigned char)buf[0] == 0xEF &&
         (unsigned char)buf[1] == 0xBB && (unsigned char)buf[2] == 0xBF) {
         buf += 3;
